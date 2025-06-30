@@ -1,55 +1,39 @@
 import streamlit as st
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.models import load_model
 from PIL import Image
-import cv2
+from tensorflow.keras.models import load_model
 
-# Load model
+# Load the PM2.5 model
 @st.cache_resource
 def load_pm25_model():
-    return load_model("pm25_cnn_model.hdf5")
+    return load_model("LIME_20240506.best.hdf5")
 
 model = load_pm25_model()
 
-# Title
-st.title("PM2.5 Prediction from Sky Image 🌫️")
-st.write("Upload a sky image to predict PM2.5 concentration (µg/m³).")
+# Set page config
+st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
 
-# Upload image
+# App Title
+st.title("🌫️ PM2.5 Level Predictor")
+st.write("Upload a sky image to predict the PM2.5 air quality level.")
+
+# File uploader
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
-if uploaded_file:
-    # Display image
-    img = Image.open(uploaded_file).convert("RGB")
-    st.image(img, caption="Uploaded Image", use_column_width=True)
+# Class labels (adjust if needed)
+class_labels = ['Good', 'Moderate', 'Unhealthy for Sensitive Groups', 'Unhealthy', 'Very Unhealthy', 'Hazardous']
 
-    # Preprocess image
-    img_resized = img.resize((224, 224))
-    img_array = np.array(img_resized)
-    img_normalized = img_array / 255.0
-    img_batch = np.expand_dims(img_normalized, axis=0)
+# Predict button
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Predict
-    prediction = model.predict(img_batch)
-    predicted_pm25 = round(prediction[0][0], 2)
+    img = image.resize((224, 224))
+    img_array = np.array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
 
-    st.subheader("Predicted PM2.5:")
-    st.metric(label="µg/m³", value=predicted_pm25)
+    prediction = model.predict(img_array)
+    class_idx = np.argmax(prediction)
 
-    # Add simple category interpretation
-    def categorize_pm25(pm25):
-        if pm25 <= 12:
-            return "Good 😊"
-        elif pm25 <= 35.4:
-            return "Moderate 😐"
-        elif pm25 <= 55.4:
-            return "Unhealthy for Sensitive Groups 😷"
-        elif pm25 <= 150.4:
-            return "Unhealthy 😷"
-        elif pm25 <= 250.4:
-            return "Very Unhealthy 🤢"
-        else:
-            return "Hazardous ☠️"
-
-    st.write("Air Quality Category:", categorize_pm25(predicted_pm25))
+    st.subheader("📊 Prediction")
+    st.write(f"**Air Quality Category:** {class_labels[class_idx]}")
