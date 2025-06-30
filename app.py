@@ -17,8 +17,6 @@
 # In[ ]:
 
 
-get_ipython().system('nvidia-smi')
-
 
 # ### opendatasets
 # Opendatasets is a Python library designed to facilitate the downloading of openly accessible datasets from Kaggle directly into the Jupyter Notebook environment. This tool streamlines the process of accessing and integrating Kaggle datasets, enriching research endeavors or educational pursuits. For detailed instructions, refer to the following link: https://www.geeksforgeeks.org/how-to-download-kaggle-datasets-into-jupyter-notebook/
