@@ -1,7 +1,6 @@
 streamlit
 numpy
-opencv-python
 Pillow
-
-opencv-python-headless==4.8.1.78
+opencv-python-headless
 tensorflow
+requests
