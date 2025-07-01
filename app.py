@@ -4,8 +4,9 @@ from PIL import Image
 import cv2
 import requests
 import tensorflow as tf
+from tensorflow.keras.models import load_model
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU
+from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add
 
 # ------------------ CONFIG ------------------ #
 
@@ -67,29 +68,21 @@ def categorize_pm25(pm_value):
 def load_pm25_model():
     input_layer = Input(shape=(224, 224, 3))
 
-    # Initial layers
     x = Conv2D(32, (3, 3), activation='relu', padding='same')(input_layer)
-    x = MaxPooling2D((2, 2))(x)  # 112x112
+    x = MaxPooling2D((2, 2))(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D((2, 2))(x)  # 56x56
-
+    x = MaxPooling2D((2, 2))(x)
     x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D((2, 2))(x)  # 28x28
-    pool2 = x  # save this for residual connection
+    x = MaxPooling2D((2, 2))(x)
+    pool2 = x
 
-    # Convolutions before Add
-    x = Conv2D(128, (3, 3), padding='same')(pool2)     # 28x28
-    x = Conv2D(128, (3, 3), padding='same')(x)         # 28x28
+    x = Conv2D(128, (3, 3), padding='same')(pool2)
+    x = Conv2D(128, (3, 3), padding='same')(x)
 
-    # Residual connection (match shape to x)
-    residual = Conv2D(128, (1, 1), padding='same')(pool2)  # 28x28, no pooling here
+    residual = Conv2D(128, (1, 1), padding='same')(pool2)
+    x = Add()([x, residual])
 
-    # Add them
-    x = Add()([x, residual])  # both are (28, 28, 128)
-
-    # Continue your model
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 13x13
-
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
     x = Conv2D(128, (3, 3), padding='same')(x)
     x = Flatten()(x)
     x = Dense(64, activation='relu')(x)
@@ -100,33 +93,29 @@ def load_pm25_model():
 
     return model
 
-
-
 # ------------------ Streamlit App ------------------ #
 
 st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
-st.title("🌫️ PM2.5 Level Predictor")
+st.title("\U0001F2AB️ PM2.5 Level Predictor")
 st.write("Upload a **sky image** to predict the PM2.5 air quality level. Try to avoid blurry, dark or blocked images.")
 
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    # Image Quality Checks
     issues = []
     if is_blurry(image): issues.append("Image appears blurry.")
     if is_overexposed_or_underexposed(image): issues.append("Image is too dark or too bright.")
     if is_mostly_white_or_black(image): issues.append("Image contains too much black or white — possibly blocked or indoor.")
 
     if issues:
-        st.error("⚠️ Image Quality Issues Detected:")
+        st.error("\u26A0\uFE0F Image Quality Issues Detected:")
         for issue in issues:
             st.write(f"- {issue}")
         st.stop()
 
-    # Run Prediction
     img = image.resize((224, 224))
     img_array = np.array(img) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
@@ -136,20 +125,19 @@ if uploaded_file is not None:
     pm25_value = float(prediction[0][0])
     category = categorize_pm25(pm25_value)
 
-    st.subheader("📊 Prediction")
+    st.subheader("\U0001F4CA Prediction")
     st.write(f"**Predicted PM2.5 Value:** {pm25_value:.2f} µg/m³")
     st.write(f"**Air Quality Category (India):** {category}")
 
-    # Weather Data & Cloud Warning
     weather = get_weather_data(CITY)
     if weather:
-        st.subheader(f"🌦️ Current Weather: {CITY}")
+        st.subheader(f"\U0001F326\uFE0F Current Weather: {CITY}")
         st.write(f"**Condition:** {weather['desc']}")
         st.write(f"**Cloud Cover:** {weather['cloud']}%")
         st.write(f"**Humidity:** {weather['humidity']}%")
         st.write(f"**Wind:** {weather['wind_kph']} km/h")
 
         if weather['cloud'] > 80 and pm25_value > 100:
-            st.warning("⚠️ Heavy cloud cover detected. Prediction might overestimate PM2.5 due to cloudy appearance.")
+            st.warning("\u26A0\uFE0F Heavy cloud cover detected. Prediction might overestimate PM2.5 due to cloudy appearance.")
     else:
         st.info("Live weather data not available at the moment.")
