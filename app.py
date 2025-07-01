@@ -64,13 +64,21 @@ def is_sky_image(pil_img, base_thresh=0.40):
     if max(np.bincount(labels.flatten())[1:]) < 0.02 * sky_mask.size: return False
     return True
 
-def is_cloudy_image(pil_img):
-    """Returns True if image is likely cloudy based on HSV analysis."""
+def is_cloudy_image(pil_img, cloudy_thresh=0.25):
     img = pil_img.resize((256, 256)).convert("RGB")
     hsv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
-    cloudy_mask = (s < 30) & (v > 110) & (v < 230)
-    return np.mean(cloudy_mask) > 0.25
+
+    # Cloudy regions = low saturation, mid brightness
+    cloud_mask = (s < 40) & (v > 80) & (v < 200)
+
+    # Edge-case fix: Allow darker clouds if saturation is still low
+    dark_cloud_mask = (s < 30) & (v >= 40) & (v <= 90)
+    cloudy_combined = cloud_mask | dark_cloud_mask
+
+    cloudy_ratio = np.mean(cloudy_combined)
+    return cloudy_ratio > cloudy_thresh
+
 
 # ------------------ Model Loader ------------------ #
 @st.cache_resource
