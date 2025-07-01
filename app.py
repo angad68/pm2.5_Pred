@@ -80,7 +80,10 @@ def adjust_prediction_with_weather(base_prediction, weather_data, is_cloudy_imag
 # Make prediction with weather adjustment
 with st.spinner("Predicting PM2.5 level..."):
     weather_data = get_comprehensive_weather_info(CITY)
-    
+
+
+use_weather_override = False  
+
 if use_weather_override:
     st.info("☁️ Heavy cloud cover detected. Using weather-adjusted baseline.")
     pm25_value = MIN_PM25_VALUE * 1.2
