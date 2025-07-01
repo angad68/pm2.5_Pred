@@ -1,7 +1,8 @@
-streamlit
-opencv-python-headless
-pillow
-numpy
-tensorflow==2.15.0
-scikit-learn
-skimage
+streamlit==1.38.0
+numpy==1.26.4
+opencv-python==4.10.0
+Pillow==10.4.0
+tensorflow==2.17.0
+requests==2.32.3
+scikit-image==0.24.0
+scipy==1.14.1
