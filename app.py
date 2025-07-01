@@ -68,17 +68,10 @@ def is_cloudy_image(pil_img, cloudy_thresh=0.25):
     img = pil_img.resize((256, 256)).convert("RGB")
     hsv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
-
-    # Cloudy regions = low saturation, mid brightness
     cloud_mask = (s < 40) & (v > 80) & (v < 200)
-
-    # Edge-case fix: Allow darker clouds if saturation is still low
     dark_cloud_mask = (s < 30) & (v >= 40) & (v <= 90)
     cloudy_combined = cloud_mask | dark_cloud_mask
-
-    cloudy_ratio = np.mean(cloudy_combined)
-    return cloudy_ratio > cloudy_thresh
-
+    return np.mean(cloudy_combined) > cloudy_thresh
 
 # ------------------ Model Loader ------------------ #
 @st.cache_resource
@@ -160,23 +153,36 @@ colors = {
 
 # ------------------ App ------------------ #
 st.title("🌫️ PM2.5 Air Quality Estimator")
-uploaded_file = st.file_uploader("📤 Upload a sky image (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
-if uploaded_file:
-    if uploaded_file.size > MAX_FILE_SIZE:
-        st.error("❌ File too large. Please upload < 10MB.")
-        st.stop()
+input_mode = st.radio("Select input method:", ["📷 Use Webcam", "📁 Upload Image"])
+image = None
 
-    try:
-        image = Image.open(uploaded_file).convert("RGB")
-        if min(image.size) < 100:
-            st.error("❌ Image too small. Minimum 100x100 pixels required.")
+if input_mode == "📁 Upload Image":
+    uploaded_file = st.file_uploader("Upload a sky image (JPG/PNG)", type=["jpg", "jpeg", "png"])
+    if uploaded_file:
+        if uploaded_file.size > MAX_FILE_SIZE:
+            st.error("❌ File too large. Please upload < 10MB.")
             st.stop()
-    except Exception as e:
-        st.error(f"Invalid image: {str(e)}")
-        st.stop()
+        try:
+            image = Image.open(uploaded_file).convert("RGB")
+            if min(image.size) < 100:
+                st.error("❌ Image too small. Minimum 100x100 pixels required.")
+                st.stop()
+        except Exception as e:
+            st.error(f"Invalid image: {str(e)}")
+            st.stop()
 
-    # Quality Checks
+elif input_mode == "📷 Use Webcam":
+    cam_input = st.camera_input("Capture sky image")
+    if cam_input:
+        try:
+            image = Image.open(cam_input).convert("RGB")
+        except Exception as e:
+            st.error(f"Camera capture failed: {str(e)}")
+            st.stop()
+
+# ------------------ If image available ------------------ #
+if image:
     if is_blurry(image):
         st.error("Image is too blurry.")
         st.stop()
@@ -190,10 +196,8 @@ if uploaded_file:
         st.error("Image does not look like sky.")
         st.stop()
 
-    # Predict
     pm25_val, pm25_std = predict_pm25(image)
 
-    # Conditional Weather API Call
     if is_cloudy_image(image):
         weather_data = fetch_weather_data(CITY)
         if weather_data:
@@ -208,10 +212,11 @@ if uploaded_file:
 
     col1, col2 = st.columns([1, 1.2])
     with col1:
-        st.image(display_img, caption="Uploaded Image")
+        st.image(display_img, caption="Captured Image")
     with col2:
         st.subheader("📊 Prediction Results")
         st.metric("PM2.5 Level", f"{pm25_val:.1f} µg/m³")
         st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
         category = categorize_pm25(pm25_val)
         st.markdown(f"**Air Quality:** {colors[category]} {category}")
+
