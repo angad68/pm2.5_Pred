@@ -2,19 +2,19 @@ import streamlit as st
 import numpy as np
 from PIL import Image
 import cv2
+import requests
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU
-import requests
 
-# ------------------ Weather API ------------------ #
-
-WEATHER_API_KEY = "7088853eac6948e286555436250107"
+# ------------------ CONFIG ------------------ #
+WEATHER_API_KEY = "7088853eac6948e286555436250107"  # Replace with your key
 CITY = "Chandigarh"
 
+# ------------------ Weather API ------------------ #
 def get_weather_data(city=CITY):
-    url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
     try:
+        url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
         response = requests.get(url)
         data = response.json()
         return {
@@ -27,59 +27,34 @@ def get_weather_data(city=CITY):
         return None
 
 # ------------------ Image Quality Checks ------------------ #
-
-def is_blurry(pil_img, threshold=30.0):  # Less sensitive now
+def is_blurry(pil_img, threshold=30.0):
     img_gray = np.array(pil_img.convert("L"))
-    laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var()
-    return laplacian_var < threshold
+    return cv2.Laplacian(img_gray, cv2.CV_64F).var() < threshold
 
-def is_overexposed_or_underexposed(pil_img, low_thresh=40, high_thresh=215):
+def is_exposed(pil_img, low_thresh=30, high_thresh=230):
     img_gray = np.array(pil_img.convert("L"))
-    mean_val = np.mean(img_gray)
-    return mean_val < low_thresh or mean_val > high_thresh
+    mean = np.mean(img_gray)
+    return mean < low_thresh or mean > high_thresh
 
-def is_mostly_white_or_black(pil_img, white_thresh=230, black_thresh=30, percent=0.6):
-    img = np.array(pil_img)
-    white_pixels = np.sum(np.all(img > white_thresh, axis=2))
-    black_pixels = np.sum(np.all(img < black_thresh, axis=2))
-    total_pixels = img.shape[0] * img.shape[1]
-    return (white_pixels + black_pixels) / total_pixels > percent
+def is_obstructed(pil_img, edge_thresh=0.2):
+    img = np.array(pil_img.resize((128, 128)))
+    edges = cv2.Canny(img, 50, 150)
+    edge_density = np.sum(edges > 0) / edges.size
+    return edge_density > edge_thresh
 
-def is_obstructed(img, sky_blue_thresh=0.6):
-    """Detects if sky occupies less than 60% of the image"""
-    img_np = np.array(img.resize((224, 224)))  # Resize for consistency
-    hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+# ------------------ PM2.5 Categorization ------------------ #
+def categorize_pm25(pm):
+    if pm <= 30: return "Good"
+    elif pm <= 60: return "Satisfactory"
+    elif pm <= 90: return "Moderately Polluted"
+    elif pm <= 120: return "Poor"
+    elif pm <= 250: return "Very Poor"
+    else: return "Severe"
 
-    lower_sky = np.array([90, 30, 60])
-    upper_sky = np.array([135, 255, 255])
-
-    sky_mask = cv2.inRange(hsv, lower_sky, upper_sky)
-    sky_ratio = np.sum(sky_mask > 0) / (224 * 224)
-
-    return sky_ratio < sky_blue_thresh
-
-# ------------------ PM2.5 Category ------------------ #
-
-def categorize_pm25(pm_value):
-    if pm_value <= 30:
-        return "Good"
-    elif pm_value <= 60:
-        return "Satisfactory"
-    elif pm_value <= 90:
-        return "Moderately Polluted"
-    elif pm_value <= 120:
-        return "Poor"
-    elif pm_value <= 250:
-        return "Very Poor"
-    else:
-        return "Severe"
-
-# ------------------ Model Definition ------------------ #
-
+# ------------------ Model Loader ------------------ #
 @st.cache_resource
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
-
     conv1 = Conv2D(64, (3, 3), padding='same')(inputs)
     leak1 = LeakyReLU(alpha=0.1)(conv1)
     conv2 = Conv2D(64, (3, 3), padding='same')(leak1)
@@ -115,69 +90,59 @@ def load_pm25_model():
 
     flatten = Flatten()(pool6)
     dense1 = Dense(1024)(flatten)
-    fcLeak1 = LeakyReLU(alpha=0.1)(dense1)
-    dense2 = Dense(1024)(fcLeak1)
-    fcLeak2 = LeakyReLU(alpha=0.1)(dense2)
-    pm25 = Dense(1, activation='linear')(fcLeak2)
+    leak13 = LeakyReLU(alpha=0.1)(dense1)
+    dense2 = Dense(1024)(leak13)
+    leak14 = LeakyReLU(alpha=0.1)(dense2)
+    output = Dense(1)(leak14)
 
-    model = Model(inputs=inputs, outputs=pm25)
+    model = Model(inputs=inputs, outputs=output)
     model.load_weights("LIME_20240506.best.hdf5")
     return model
 
-model = load_pm25_model()
-
-# ------------------ Streamlit UI ------------------ #
-
+# ------------------ Streamlit App ------------------ #
 st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
 st.title("🌫️ PM2.5 Level Predictor")
-st.write("Upload a **sky image** to predict the PM2.5 air quality level. Try to avoid blurry, dark, or blocked images.")
+st.write("Upload a **sky image** to predict the PM2.5 air quality level. Avoid indoor or heavily obstructed images.")
 
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload a sky image", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
+if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # --- Quality Checks ---
-    issues = []
-    if is_blurry(image):
-        issues.append("Image appears slightly blurry.")
-    if is_overexposed_or_underexposed(image):
-        issues.append("Image is too dark or too bright.")
-    if is_mostly_white_or_black(image):
-        issues.append("Image contains too much black or white — possibly blocked or indoor.")
-    if is_obstructed(image):
-        issues.append("Sky appears obstructed. Image might not be suitable.")
+    # Quality Warnings
+    warnings = []
+    if is_blurry(image): warnings.append("• Image appears slightly blurry.")
+    if is_exposed(image): warnings.append("• Image is underexposed or overexposed.")
+    if is_obstructed(image): warnings.append("• Sky may be obstructed (trees/buildings).")
 
-    if issues:
-        st.error("⚠️ Image Quality Issues Detected:")
-        for issue in issues:
-            st.write(f"- {issue}")
-        st.stop()
+    if warnings:
+        st.warning("⚠️ Image Quality Notice:\n" + "\n".join(warnings))
 
-    # --- Prediction ---
+    # Run prediction
     img = image.resize((224, 224))
-    img_array = np.array(img) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
+    arr = np.array(img) / 255.0
+    arr = np.expand_dims(arr, axis=0)
 
-    prediction = model.predict(img_array)
-    pm25_value = float(prediction[0][0])
-    category = categorize_pm25(pm25_value)
+    model = load_pm25_model()
+    prediction = model.predict(arr)
+    pm25 = float(prediction[0][0])
+    category = categorize_pm25(pm25)
 
     st.subheader("📊 Prediction")
-    st.write(f"**Predicted PM2.5 Value:** {pm25_value:.2f} µg/m³")
-    st.write(f"**Air Quality Category (India):** {category}")
+    st.write(f"**Predicted PM2.5 Value:** {pm25:.2f} µg/m³")
+    st.write(f"**Air Quality Category:** {category}")
 
-    # --- Weather Data
-    weather = get_weather_data(CITY)
+    # Weather info
+    weather = get_weather_data()
     if weather:
-        st.subheader(f"🌦️ Current Weather: {CITY}")
+        st.subheader(f"🌦️ Weather in {CITY}")
         st.write(f"**Condition:** {weather['desc']}")
         st.write(f"**Cloud Cover:** {weather['cloud']}%")
         st.write(f"**Humidity:** {weather['humidity']}%")
         st.write(f"**Wind Speed:** {weather['wind_kph']} km/h")
-
-        if weather['cloud'] > 80 and pm25_value > 100:
-            st.warning("☁️ Heavy cloud cover detected. Prediction might be skewed due to cloudy appearance.")
+        if weather['cloud'] > 80 and pm25 > 90:
+            st.info("☁️ Heavy cloud cover may influence predictions due to reduced sky clarity.")
     else:
-        st.info("⚠️ Live weather data not available right now.")
+        st.info("Live weather data unavailable.")
+
