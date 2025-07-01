@@ -25,16 +25,16 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     total_pixels = img.shape[0] * img.shape[1]
     return (white_pixels + black_pixels) / total_pixels > percent
 
-def is_sky_image(pil_img, sky_percent=0.3):
+def is_sky_image(pil_img, sky_percent=0.4):
     img = pil_img.resize((256, 256)).convert("RGB")
     img_np = np.array(img)
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
 
-    blue_sky = ((h >= 100) & (h <= 130)) & (s > 30) & (v > 80)
-    light_blue = ((h >= 80) & (h <= 110)) & (s > 15) & (v > 100)
-    gray_sky = (s < 30) & (v > 120) & (v < 220)
-    bright_areas = (v > 200) & (s < 50)
+    blue_sky = ((h >= 100) & (h <= 130)) & (s > 40) & (v > 90)
+    light_blue = ((h >= 85) & (h <= 110)) & (s > 20) & (v > 110)
+    gray_sky = (s < 25) & (v > 130) & (v < 210)
+    bright_areas = (v > 210) & (s < 40)
 
     sky_mask = blue_sky | light_blue | gray_sky | bright_areas
 
@@ -137,18 +137,19 @@ if uploaded_file:
         st.error(f"Invalid image file: {str(e)}")
         st.stop()
 
-    warnings = []
+    # Run all quality checks and block prediction if any fails
     if is_blurry(image):
-        warnings.append("Image appears blurry.")
+        st.error("Prediction aborted: image is too blurry.")
+        st.stop()
     if is_overexposed_or_underexposed(image):
-        warnings.append("Image may be overexposed or underexposed.")
+        st.error("Prediction aborted: image is overexposed or underexposed.")
+        st.stop()
     if is_mostly_white_or_black(image):
-        warnings.append("Image has large white/black areas.")
+        st.error("Prediction aborted: image is mostly white or black.")
+        st.stop()
     if not is_sky_image(image):
-        warnings.append("Image may not contain enough visible sky.")
-
-    if warnings:
-        st.warning("\n".join(warnings))
+        st.error("Prediction aborted: image does not appear to show sky clearly.")
+        st.stop()
 
     img = image.resize((224, 224))
     img_array = np.array(img) / 255.0
