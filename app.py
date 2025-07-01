@@ -3,16 +3,14 @@ import numpy as np
 from PIL import Image
 import cv2
 import tensorflow as tf
-import requests
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU
-
-# ------------------ CONFIG ------------------ #
-
-WEATHER_API_KEY = "7088853eac6948e286555436250107"  # Replace with your WeatherAPI key
-CITY = "Chandigarh"
+import requests
 
 # ------------------ Weather API ------------------ #
+
+WEATHER_API_KEY = "7088853eac6948e286555436250107"
+CITY = "Chandigarh"
 
 def get_weather_data(city=CITY):
     url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
@@ -25,12 +23,12 @@ def get_weather_data(city=CITY):
             "wind_kph": data["current"]["wind_kph"],
             "desc": data["current"]["condition"]["text"]
         }
-    except Exception:
+    except:
         return None
 
 # ------------------ Image Quality Checks ------------------ #
 
-def is_blurry(pil_img, threshold=100.0):
+def is_blurry(pil_img, threshold=30.0):  # Less sensitive now
     img_gray = np.array(pil_img.convert("L"))
     laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var()
     return laplacian_var < threshold
@@ -45,14 +43,40 @@ def is_mostly_white_or_black(pil_img, white_thresh=230, black_thresh=30, percent
     white_pixels = np.sum(np.all(img > white_thresh, axis=2))
     black_pixels = np.sum(np.all(img < black_thresh, axis=2))
     total_pixels = img.shape[0] * img.shape[1]
-    if white_pixels / total_pixels > percent or black_pixels / total_pixels > percent:
-        return True
-    return False
+    return (white_pixels + black_pixels) / total_pixels > percent
 
-# ------------------ Model Loader ------------------ #
+def is_obstructed(img, sky_blue_thresh=0.6):
+    """Detects if sky occupies less than 60% of the image"""
+    img_np = np.array(img.resize((224, 224)))  # Resize for consistency
+    hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+
+    lower_sky = np.array([90, 30, 60])
+    upper_sky = np.array([135, 255, 255])
+
+    sky_mask = cv2.inRange(hsv, lower_sky, upper_sky)
+    sky_ratio = np.sum(sky_mask > 0) / (224 * 224)
+
+    return sky_ratio < sky_blue_thresh
+
+# ------------------ PM2.5 Category ------------------ #
+
+def categorize_pm25(pm_value):
+    if pm_value <= 30:
+        return "Good"
+    elif pm_value <= 60:
+        return "Satisfactory"
+    elif pm_value <= 90:
+        return "Moderately Polluted"
+    elif pm_value <= 120:
+        return "Poor"
+    elif pm_value <= 250:
+        return "Very Poor"
+    else:
+        return "Severe"
+
+# ------------------ Model Definition ------------------ #
 
 @st.cache_resource
-
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
 
@@ -106,23 +130,9 @@ model = load_pm25_model()
 
 st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
 st.title("🌫️ PM2.5 Level Predictor")
-st.write("Upload a **sky image** to predict the PM2.5 air quality level. Try to avoid blurry or obstructed images.")
+st.write("Upload a **sky image** to predict the PM2.5 air quality level. Try to avoid blurry, dark, or blocked images.")
 
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-
-def categorize_pm25(pm_value):
-    if pm_value <= 30:
-        return "Good"
-    elif pm_value <= 60:
-        return "Satisfactory"
-    elif pm_value <= 90:
-        return "Moderately Polluted"
-    elif pm_value <= 120:
-        return "Poor"
-    elif pm_value <= 250:
-        return "Very Poor"
-    else:
-        return "Severe"
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
@@ -131,11 +141,13 @@ if uploaded_file is not None:
     # --- Quality Checks ---
     issues = []
     if is_blurry(image):
-        issues.append("Image appears blurry.")
+        issues.append("Image appears slightly blurry.")
     if is_overexposed_or_underexposed(image):
         issues.append("Image is too dark or too bright.")
     if is_mostly_white_or_black(image):
         issues.append("Image contains too much black or white — possibly blocked or indoor.")
+    if is_obstructed(image):
+        issues.append("Sky appears obstructed. Image might not be suitable.")
 
     if issues:
         st.error("⚠️ Image Quality Issues Detected:")
@@ -156,15 +168,16 @@ if uploaded_file is not None:
     st.write(f"**Predicted PM2.5 Value:** {pm25_value:.2f} µg/m³")
     st.write(f"**Air Quality Category (India):** {category}")
 
+    # --- Weather Data
     weather = get_weather_data(CITY)
     if weather:
         st.subheader(f"🌦️ Current Weather: {CITY}")
         st.write(f"**Condition:** {weather['desc']}")
         st.write(f"**Cloud Cover:** {weather['cloud']}%")
         st.write(f"**Humidity:** {weather['humidity']}%")
-        st.write(f"**Wind:** {weather['wind_kph']} km/h")
+        st.write(f"**Wind Speed:** {weather['wind_kph']} km/h")
 
         if weather['cloud'] > 80 and pm25_value > 100:
-            st.warning("⚠️ Heavy cloud cover detected. Prediction might overestimate PM2.5 due to cloudy appearance.")
+            st.warning("☁️ Heavy cloud cover detected. Prediction might be skewed due to cloudy appearance.")
     else:
-        st.info("Live weather data not available at the moment.")
+        st.info("⚠️ Live weather data not available right now.")
