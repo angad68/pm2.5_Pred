@@ -178,7 +178,11 @@ with st.container():
 
         try:
             image = Image.open(uploaded_file).convert("RGB")
-            st.image(image, caption="Uploaded Image", use_container_width=True)
+            # Resize for display (but not for prediction)
+            display_img = image.copy()
+            display_img.thumbnail((500, 500))  # Maintain aspect ratio
+            st.image(display_img, caption="Uploaded Image", use_container_width=False)
+
             if image.size[0] < 100 or image.size[1] < 100:
                 st.error("Image too small. Minimum 100x100 pixels required.")
                 st.stop()
