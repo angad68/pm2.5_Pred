@@ -19,17 +19,8 @@ st.markdown("""
         background-color: #111111;
         padding: 2rem 1rem 2rem 1rem;
     }
-    .stFileUploader {
-        color: #E0E0E0;
-    }
-    .css-1d391kg, .css-18ni7ap {
-        background-color: #111111 !important;
-    }
     h1, h2, h3, h4 {
         color: #F1F1F1;
-    }
-    .stTitle {
-        text-align: center;
     }
     .stMetric {
         background-color: #222222;
@@ -56,41 +47,27 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     total_pixels = img.shape[0] * img.shape[1]
     return (white_pixels + black_pixels) / total_pixels > percent
 
-import numpy as np
-import cv2
-from PIL import Image
-
 def is_sky_image(pil_img, base_thresh=0.40):
-    """
-    Enhanced sky detection using HSV heuristics + structural checks.
-    Returns True if the image likely contains a significant amount of sky.
-    """
-    # Step 1: Resize and convert
     img = pil_img.resize((256, 256)).convert("RGB")
     img_np = np.array(img)
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
 
-    # Step 2: Create HSV masks for various sky types
     blue_sky = ((h >= 95) & (h <= 135)) & (s > 40) & (v > 80)
     light_sky = ((h >= 80) & (h <= 120)) & (s > 20) & (v > 120)
     gray_clouds = (s < 25) & (v > 120) & (v < 230)
     white_clouds = (v > 200) & (s < 35)
-
     sky_mask = blue_sky | light_sky | gray_clouds | white_clouds
 
-    # Step 3: Top-heavy weighting
     height, width = sky_mask.shape
     weight_mask = np.ones_like(sky_mask, dtype=np.float32)
     for i in range(height):
-        weight_mask[i, :] = 1.5 - (i / height)  # More weight at top
+        weight_mask[i, :] = 1.5 - (i / height)
 
-    # Step 4: Weighted sky ratio
     weighted_sky_pixels = np.sum(sky_mask * weight_mask)
     total_weight = np.sum(weight_mask)
     weighted_sky_ratio = weighted_sky_pixels / total_weight
 
-    # Step 5: Adaptive threshold based on brightness
     avg_brightness = np.mean(v)
     adaptive_thresh = base_thresh
     if avg_brightness < 90:
@@ -99,23 +76,20 @@ def is_sky_image(pil_img, base_thresh=0.40):
         adaptive_thresh += 0.05
 
     if weighted_sky_ratio < adaptive_thresh:
-        return False  # Not enough sky
+        return False
 
-    # Step 6: Hue consistency check
     sky_hues = h[sky_mask]
     if sky_hues.size > 0 and np.std(sky_hues) > 25:
-        return False  # Hue too variable, not consistent sky
+        return False
 
-    # Step 7: Component size check
     num_labels, labels = cv2.connectedComponents(sky_mask.astype(np.uint8))
     if num_labels <= 1:
-        return False  # No sky component
-    largest_component = max(np.bincount(labels.flatten())[1:])  # Ignore background
+        return False
+    largest_component = max(np.bincount(labels.flatten())[1:])
     if largest_component < 0.02 * sky_mask.size:
-        return False  # Too small to be meaningful
+        return False
 
-    return True  # Sky detected
-
+    return True
 
 # ------------------ Constants ------------------ #
 MODEL_PATH = "LIME_20240506.best.hdf5"
@@ -180,7 +154,7 @@ def fetch_weather_data(city):
         return None
 
 # ------------------ Prediction ------------------ #
-USE_UNCERTAINTY = False  # Toggle this
+USE_UNCERTAINTY = False
 
 def predict_pm25(image):
     img_resized = image.resize((224, 224))
@@ -193,10 +167,11 @@ def predict_pm25(image):
     else:
         pm25_value = float(model(img_array, training=False).numpy().squeeze())
         return pm25_value, 0.0
+
 # ------------------ App Layout ------------------ #
 st.title("🌫️ PM2.5 Air Quality Estimator")
-
 st.subheader("📤 Upload Image")
+
 uploaded_file = st.file_uploader("Choose a sky image (JPG/PNG, < 10MB)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
@@ -213,7 +188,6 @@ if uploaded_file:
         st.error(f"Invalid image file: {str(e)}")
         st.stop()
 
-    # Quality Checks
     if is_blurry(image):
         st.error("Too blurry.")
         st.stop()
@@ -227,18 +201,17 @@ if uploaded_file:
         st.error("Does not look like a sky image.")
         st.stop()
 
-    # Predict
     pm25_value, pm25_std = predict_pm25(image)
 
-    # Weather adjustment
+    # ✅ NEW cloudiness-based adjustment
     weather_data = fetch_weather_data(CITY)
     if weather_data:
         condition = weather_data.get("current", {}).get("condition", {}).get("text", "").lower()
-        if "cloud" in condition or "overcast" in condition:
-            st.info(f"☁️ Cloudy in {CITY.title()}. Adjusted prediction.")
+        cloud_cover = weather_data.get("current", {}).get("cloud", 0)
+        if cloud_cover > 60 or "overcast" in condition:
+            st.info(f"☁️ Cloudy in {CITY.title()} (Cloud cover: {cloud_cover}%). Adjusted prediction.")
             pm25_value = max(pm25_value, MIN_PM25_VALUE)
 
-    # Categorize
     def categorize_pm25(val):
         if val <= 30: return "Good"
         elif val <= 60: return "Satisfactory"
@@ -252,7 +225,6 @@ if uploaded_file:
         "Poor": "🔴", "Very Poor": "🟣", "Severe": "🔴"
     }
 
-    # Display
     display_img = image.copy()
     display_img.thumbnail((500, 500))
 
