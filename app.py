@@ -5,10 +5,11 @@ import cv2
 import requests
 import tensorflow as tf
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU
+from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, LeakyReLU, Add
+from tensorflow.keras.preprocessing import image as keras_image
 
 # ------------------ CONFIG ------------------ #
-WEATHER_API_KEY = "7088853eac6948e286555436250107"  # Replace with your own
+WEATHER_API_KEY = "7088853eac6948e286555436250107"
 CITY = "Chandigarh"
 MIN_PM25_VALUE = 20.0
 
@@ -68,102 +69,98 @@ def categorize_pm25(pm_value):
 @st.cache_resource
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
+    x = Conv2D(64, (3, 3), padding='same', name='block1_conv1')(inputs)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = Conv2D(64, (3, 3), padding='same', name='block1_conv2')(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2), name='block1_pool')(x)
 
-    conv1 = Conv2D(64, (3, 3), padding='same')(inputs)
-    leak1 = LeakyReLU(alpha=0.1)(conv1)
-    conv2 = Conv2D(64, (3, 3), padding='same')(leak1)
-    leak2 = LeakyReLU(alpha=0.1)(conv2)
-    pool1 = MaxPooling2D((3, 3), strides=(2, 2))(leak2)
+    x = Conv2D(128, (3, 3), padding='same', name='block2_conv1')(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = Conv2D(128, (3, 3), padding='same', name='block2_conv2')(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    pool2 = MaxPooling2D((3, 3), strides=(2, 2), name='block2_pool')(x)
 
-    conv3 = Conv2D(128, (3, 3), padding='same')(pool1)
-    leak3 = LeakyReLU(alpha=0.1)(conv3)
-    conv4 = Conv2D(128, (3, 3), padding='same')(leak3)
-    leak4 = LeakyReLU(alpha=0.1)(conv4)
-    pool2 = MaxPooling2D((3, 3), strides=(2, 2))(leak4)
+    x = Conv2D(128, (3, 3), padding='same', name='block3_conv1')(pool2)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = Add()([x, pool2])
+    x = MaxPooling2D((3, 3), strides=(2, 2), name='block3_pool')(x)
 
-    conv5 = Conv2D(128, (3, 3), padding='same')(pool2)
-    leak5 = LeakyReLU(alpha=0.1)(conv5)
-    res2 = Add()([leak5, pool2])
-    pool3 = MaxPooling2D((3, 3), strides=(2, 2))(res2)
+    x = Conv2D(128, (3, 3), padding='same', name='block4_conv1')(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = Add()([x, x])
+    x = MaxPooling2D((3, 3), strides=(2, 2), name='block4_pool')(x)
 
-    conv7 = Conv2D(128, (3, 3), padding='same')(pool3)
-    leak7 = LeakyReLU(alpha=0.1)(conv7)
-    res3 = Add()([leak7, pool3])
-    pool4 = MaxPooling2D((3, 3), strides=(2, 2))(res3)
+    x = Conv2D(128, (3, 3), padding='same', name='block5_conv1')(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = Add()([x, x])
+    x = MaxPooling2D((3, 3), strides=(2, 2), name='block5_pool')(x)
 
-    conv9 = Conv2D(128, (3, 3), padding='same')(pool4)
-    leak9 = LeakyReLU(alpha=0.1)(conv9)
-    res4 = Add()([leak9, pool4])
-    pool5 = MaxPooling2D((3, 3), strides=(2, 2))(res4)
+    x = Conv2D(256, (3, 3), padding='same', name='block6_conv1')(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = Conv2D(256, (3, 3), padding='same', name='block6_conv2')(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2), name='block6_pool')(x)
 
-    conv11 = Conv2D(256, (3, 3), padding='same')(pool5)
-    leak11 = LeakyReLU(alpha=0.1)(conv11)
-    conv12 = Conv2D(256, (3, 3), padding='same')(leak11)
-    leak12 = LeakyReLU(alpha=0.1)(conv12)
-    pool6 = MaxPooling2D((3, 3), strides=(2, 2))(leak12)
-
-    flatten = Flatten()(pool6)
-    dense1 = Dense(1024)(flatten)
-    fcLeak1 = LeakyReLU(alpha=0.1)(dense1)
-    dense2 = Dense(1024)(fcLeak1)
-    fcLeak2 = LeakyReLU(alpha=0.1)(dense2)
-    pm25 = Dense(1, activation='linear')(fcLeak2)
+    x = Flatten()(x)
+    x = Dense(1024)(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = Dense(1024)(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    pm25 = Dense(1, activation='linear', name="PM2.5_output")(x)
 
     model = Model(inputs=inputs, outputs=pm25)
     model.compile(loss='mae', optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001))
     model.load_weights("LIME_20240506.best.hdf5")
     return model
 
-# ------------------ Image Preprocessing ------------------ #
-def preprocess_uploaded_image(uploaded_image):
-    from tensorflow.keras.preprocessing import image as keras_image
-    import tensorflow as tf
-
-    img_array = keras_image.img_to_array(image)  # from PIL Image
-    img_array = tf.image.resize(img_array, (224, 224), method='bilinear')  # Or 'bicubic'
-    img_array = img_array / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
+model = load_pm25_model()
 
 # ------------------ Streamlit UI ------------------ #
 st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
-st.title("\U0001F32B\uFE0F PM2.5 Level Predictor")
+st.title("🌫️ PM2.5 Level Predictor")
 st.write("Upload a **sky image** to predict PM2.5 air quality.")
 
 uploaded_file = st.file_uploader("Choose a sky image...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    img_array, display_img = preprocess_uploaded_image(uploaded_file)
-    st.image(display_img, caption="Uploaded Image", use_container_width=True)
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_container_width=True)
 
+    # --- Quality Checks ---
     issues = []
     should_abort = False
     cloudy_looking = False
 
-    if not is_sky_like(display_img):
+    if not is_sky_like(image):
         issues.append("Image doesn't look like a sky photo.")
         should_abort = True
 
-    if is_blurry(display_img):
+    if is_blurry(image):
         issues.append("Image might be blurry.")
         should_abort = True
 
-    if is_overexposed_or_underexposed(display_img):
+    if is_overexposed_or_underexposed(image):
         issues.append("Image is too bright or too dark.")
         should_abort = True
 
-    if is_mostly_white_or_black(display_img):
+    if is_mostly_white_or_black(image):
         issues.append("Sky seems fully covered (cloudy/washed).")
         cloudy_looking = True
 
     if issues:
-        st.warning("\u26A0\uFE0F Image Quality Issues Detected:")
+        st.warning("⚠️ Image Quality Issues Detected:")
         for issue in issues:
             st.write(f"- {issue}")
 
     if should_abort:
-        st.error("\u26D4\uFE0F This image is unsuitable for prediction. Please upload a clearer sky image.")
+        st.error("⛔ This image is unsuitable for prediction. Please upload a clearer sky image.")
     else:
-        model = load_pm25_model()
+        # --- High-Quality Resize ---
+        img_array = keras_image.img_to_array(image)
+        img_array = tf.image.resize(img_array, (224, 224), method='bicubic') / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
+
         use_weather_adjustment = False
         if cloudy_looking:
             cloud_percent = get_weather_cloud_info(CITY)
@@ -171,14 +168,14 @@ if uploaded_file is not None:
                 use_weather_adjustment = True
 
         if use_weather_adjustment:
-            st.info("\u2601\uFE0F Cloudy conditions detected in your region. Prediction might be affected. Using minimum plausible value.")
+            st.info("☁️ Cloudy conditions detected in your region. Prediction might be affected. Using minimum plausible value.")
             pm25_value = MIN_PM25_VALUE
         else:
-            prediction = model.predict(img_array)
+            prediction = model.predict(img_array, verbose=0)
             pm25_value = float(prediction[0][0])
 
         category = categorize_pm25(pm25_value)
 
-        st.subheader("\U0001F4CA Prediction")
+        st.subheader("📊 Prediction")
         st.write(f"**Predicted PM2.5:** {pm25_value:.2f} µg/m³")
         st.write(f"**Air Quality Category:** {category}")
