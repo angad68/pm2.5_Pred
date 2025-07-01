@@ -167,7 +167,7 @@ if uploaded_file:
     try:
         image = Image.open(uploaded_file).convert("RGB")
         display_img = image.copy()
-        display_img.thumbnail((600, 600))  # for display
+        display_img.thumbnail((500, 500))  # for display
         col_img, col_pred = st.columns([1, 1.2])
     except Exception as e:
         st.error(f"Invalid image file: {str(e)}")
