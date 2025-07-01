@@ -85,7 +85,7 @@ if uploaded_file:
 
     try:
         image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+        st.image(image, caption="Uploaded Image", use_container_width=True)
         if image.size[0] < 100 or image.size[1] < 100:
             st.error("Image too small. Please upload an image at least 100x100 pixels.")
             st.stop()
