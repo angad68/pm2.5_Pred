@@ -25,16 +25,17 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     total_pixels = img.shape[0] * img.shape[1]
     return (white_pixels + black_pixels) / total_pixels > percent
 
-def is_sky_image(pil_img, sky_percent=0.4):
+def is_sky_image(pil_img, sky_percent=0.5):
     img = pil_img.resize((256, 256)).convert("RGB")
     img_np = np.array(img)
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
 
-    blue_sky = ((h >= 100) & (h <= 130)) & (s > 40) & (v > 90)
-    light_blue = ((h >= 85) & (h <= 110)) & (s > 20) & (v > 110)
-    gray_sky = (s < 25) & (v > 130) & (v < 210)
-    bright_areas = (v > 210) & (s < 40)
+    # More strict conditions
+    blue_sky = ((h >= 100) & (h <= 130)) & (s > 50) & (v > 100)
+    light_blue = ((h >= 90) & (h <= 110)) & (s > 30) & (v > 120)
+    gray_sky = (s < 20) & (v > 130) & (v < 210)
+    bright_areas = (v > 215) & (s < 35)
 
     sky_mask = blue_sky | light_blue | gray_sky | bright_areas
 
@@ -48,7 +49,18 @@ def is_sky_image(pil_img, sky_percent=0.4):
     total_weighted_pixels = np.sum(weight_mask)
     weighted_sky_ratio = weighted_sky_pixels / total_weighted_pixels
 
-    return weighted_sky_ratio > sky_percent
+    # Reject if not enough sky area
+    if weighted_sky_ratio < sky_percent:
+        return False
+
+    # Additional flatness check (cloudy/gray skies)
+    stddev = np.std(img_np)
+    if stddev < 20:  # Very low variation → probably fully overcast
+        return False
+
+    return True
+
+
 
 # ------------------ Configurations ------------------ #
 MODEL_PATH = "LIME_20240506.best.hdf5"
