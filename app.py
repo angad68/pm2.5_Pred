@@ -158,9 +158,13 @@ def fetch_weather_data(city):
 
 # ------------------ Upload & Predict ------------------ #
 def predict_pm25(image):
-    img = image.resize((224, 224))
-    img_array = np.array(img) / 255.0
+    img_array = np.array(resized_image) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
+    with st.spinner("Predicting PM2.5 level with uncertainty estimation..."):
+        preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
+        pm25_value = float(np.mean(preds))
+        pm25_std = float(np.std(preds))
+        return max(0.0, min(1000.0, pm25_value)), pm25_std
 
     with st.spinner("Predicting PM2.5 level with uncertainty estimation..."):
         preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
