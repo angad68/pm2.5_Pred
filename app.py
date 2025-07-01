@@ -3,10 +3,12 @@ import numpy as np
 from PIL import Image
 import cv2
 import requests
-from tensorflow.keras.models import load_model
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 
 # ------------------ CONFIG ------------------ #
-WEATHER_API_KEY = "7088853eac6948e286555436250107"  # Replace with your key
+WEATHER_API_KEY = "7088853eac6948e286555436250107"  # Replace with your own
 CITY = "Chandigarh"
 MIN_PM25_VALUE = 20.0
 
@@ -21,7 +23,7 @@ def get_weather_cloud_info(city=CITY):
         return None
 
 # ------------------ Quality Checks ------------------ #
-def is_blurry(pil_img, threshold=25.0):  # Softened
+def is_blurry(pil_img, threshold=25.0):
     img_gray = np.array(pil_img.convert("L"))
     laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var()
     return laplacian_var < threshold
@@ -45,7 +47,7 @@ def is_sky_like(pil_img):
     r = img[:, :, 0]
     sky_mask = (b > r + 10) & (b > g + 10)
     sky_coverage = np.sum(sky_mask) / sky_mask.size
-    return sky_coverage > 0.15  # relaxed threshold
+    return sky_coverage > 0.15
 
 # ------------------ PM2.5 Category ------------------ #
 def categorize_pm25(pm_value):
@@ -62,12 +64,60 @@ def categorize_pm25(pm_value):
     else:
         return "Severe"
 
-# ------------------ Load Model ------------------ #
+# ------------------ CNN Architecture ------------------ #
 @st.cache_resource
 def load_pm25_model():
-    return load_model("LIME_20240506.best.hdf5")
+    # Define model architecture (as you've provided)
+    inputs = Input(shape=(224, 224, 3))
 
-model = load_pm25_model()
+    conv1 = Conv2D(64, (3, 3), padding='same', name='block1_conv1')(inputs)
+    leak1 = LeakyReLU(alpha=0.1)(conv1)
+    conv2 = Conv2D(64, (3, 3), padding='same', name='block1_conv2')(leak1)
+    leak2 = LeakyReLU(alpha=0.1)(conv2)
+    pool1 = MaxPooling2D((3, 3), strides=(2, 2), name='block1_pool')(leak2)
+
+    conv3 = Conv2D(128, (3, 3), padding='same', name='block2_conv1')(pool1)
+    leak3 = LeakyReLU(alpha=0.1)(conv3)
+    conv4 = Conv2D(128, (3, 3), padding='same', name='block2_conv2')(leak3)
+    leak4 = LeakyReLU(alpha=0.1)(conv4)
+    pool2 = MaxPooling2D((3, 3), strides=(2, 2), name='block2_pool')(leak4)
+
+    conv5 = Conv2D(128, (3, 3), padding='same', name='block3_conv1')(pool2)
+    leak5 = LeakyReLU(alpha=0.1)(conv5)
+    res2 = Add()([leak5, pool2])
+    pool3 = MaxPooling2D((3, 3), strides=(2, 2), name='block3_pool')(res2)
+
+    conv7 = Conv2D(128, (3, 3), padding='same', name='block4_conv1')(pool3)
+    leak7 = LeakyReLU(alpha=0.1)(conv7)
+    res3 = Add()([leak7, pool3])
+    pool4 = MaxPooling2D((3, 3), strides=(2, 2), name='block4_pool')(res3)
+
+    conv9 = Conv2D(128, (3, 3), padding='same', name='block5_conv1')(pool4)
+    leak9 = LeakyReLU(alpha=0.1)(conv9)
+    res4 = Add()([leak9, pool4])
+    pool5 = MaxPooling2D((3, 3), strides=(2, 2), name='block5_pool')(res4)
+
+    conv11 = Conv2D(256, (3, 3), padding='same', name='block6_conv1')(pool5)
+    leak11 = LeakyReLU(alpha=0.1)(conv11)
+    conv12 = Conv2D(256, (3, 3), padding='same', name='block6_conv2')(leak11)
+    leak12 = LeakyReLU(alpha=0.1)(conv12)
+    pool6 = MaxPooling2D((3, 3), strides=(2, 2), name='block6_pool')(leak12)
+
+    flatten = Flatten()(pool6)
+    dense1 = Dense(1024)(flatten)
+    fcLeak1 = LeakyReLU(alpha=0.1)(dense1)
+    dense2 = Dense(1024)(fcLeak1)
+    fcLeak2 = LeakyReLU(alpha=0.1)(dense2)
+    pm25 = Dense(1, activation='linear', name="PM2.5_output")(fcLeak2)
+
+    model = Model(inputs=inputs, outputs=pm25)
+
+    # Compile (just for safety in case needed post-load)
+    model.compile(loss='mae', optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001))
+
+    # Load weights
+    model.load_weights("LIME_20240506.best.hdf5")
+    return model
 
 # ------------------ Streamlit UI ------------------ #
 st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
