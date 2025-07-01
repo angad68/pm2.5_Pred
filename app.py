@@ -6,7 +6,6 @@ import requests
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, LeakyReLU, Add
-from tensorflow.keras.preprocessing import image as keras_image
 
 # ------------------ CONFIG ------------------ #
 WEATHER_API_KEY = "7088853eac6948e286555436250107"
@@ -23,94 +22,68 @@ def get_weather_cloud_info(city=CITY):
     except:
         return None
 
-# ------------------ Quality Checks ------------------ #
+# ------------------ Image Quality Checks (Soft Warnings) ------------------ #
 def is_blurry(pil_img, threshold=25.0):
     img_gray = np.array(pil_img.convert("L"))
-    laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var()
-    return laplacian_var < threshold
+    return cv2.Laplacian(img_gray, cv2.CV_64F).var() < threshold
 
-def is_overexposed_or_underexposed(pil_img, low_thresh=35, high_thresh=220):
-    img_gray = np.array(pil_img.convert("L"))
-    mean_val = np.mean(img_gray)
+def is_dark_or_bright(pil_img, low_thresh=35, high_thresh=220):
+    mean_val = np.mean(np.array(pil_img.convert("L")))
     return mean_val < low_thresh or mean_val > high_thresh
 
 def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent=0.75):
     img = np.array(pil_img)
     white_pixels = np.sum(np.all(img > white_thresh, axis=2))
     black_pixels = np.sum(np.all(img < black_thresh, axis=2))
-    total_pixels = img.shape[0] * img.shape[1]
-    return (white_pixels + black_pixels) / total_pixels > percent
+    total = img.shape[0] * img.shape[1]
+    return (white_pixels + black_pixels) / total > percent
 
-def is_sky_like(pil_img):
-    img = np.array(pil_img.resize((128, 128)))
-    b = img[:, :, 2]
-    g = img[:, :, 1]
-    r = img[:, :, 0]
-    sky_mask = (b > r + 10) & (b > g + 10)
-    sky_coverage = np.sum(sky_mask) / sky_mask.size
-    return sky_coverage > 0.15
-
-# ------------------ PM2.5 Category ------------------ #
-def categorize_pm25(pm_value):
-    if pm_value <= 30:
-        return "Good"
-    elif pm_value <= 60:
-        return "Satisfactory"
-    elif pm_value <= 90:
-        return "Moderately Polluted"
-    elif pm_value <= 120:
-        return "Poor"
-    elif pm_value <= 250:
-        return "Very Poor"
-    else:
-        return "Severe"
-
-# ------------------ CNN Architecture ------------------ #
+# ------------------ CNN Model Loader ------------------ #
 @st.cache_resource
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
-    x = Conv2D(64, (3, 3), padding='same', name='block1_conv1')(inputs)
+    x = Conv2D(64, (3, 3), padding='same')(inputs)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(64, (3, 3), padding='same', name='block1_conv2')(x)
+    x = Conv2D(64, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block1_pool')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
-    x = Conv2D(128, (3, 3), padding='same', name='block2_conv1')(x)
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(128, (3, 3), padding='same', name='block2_conv2')(x)
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    pool2 = MaxPooling2D((3, 3), strides=(2, 2), name='block2_pool')(x)
+    res2 = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
-    x = Conv2D(128, (3, 3), padding='same', name='block3_conv1')(pool2)
+    x = Conv2D(128, (3, 3), padding='same')(res2)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Add()([x, pool2])
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block3_pool')(x)
+    x = Add()([x, res2])
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
-    x = Conv2D(128, (3, 3), padding='same', name='block4_conv1')(x)
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Add()([x, x])
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block4_pool')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
-    x = Conv2D(128, (3, 3), padding='same', name='block5_conv1')(x)
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Add()([x, x])
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block5_pool')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
-    x = Conv2D(256, (3, 3), padding='same', name='block6_conv1')(x)
+    x = Conv2D(256, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(256, (3, 3), padding='same', name='block6_conv2')(x)
+    x = Conv2D(256, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block6_pool')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
     x = Flatten()(x)
     x = Dense(1024)(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Dense(1024)(x)
     x = LeakyReLU(alpha=0.1)(x)
-    pm25 = Dense(1, activation='linear', name="PM2.5_output")(x)
+    output = Dense(1, activation='linear', name="PM2.5_output")(x)
 
-    model = Model(inputs=inputs, outputs=pm25)
-    model.compile(loss='mae', optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001))
+    model = Model(inputs=inputs, outputs=output)
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), loss='mae')
     model.load_weights("LIME_20240506.best.hdf5")
     return model
 
@@ -123,59 +96,58 @@ st.write("Upload a **sky image** to predict PM2.5 air quality.")
 
 uploaded_file = st.file_uploader("Choose a sky image...", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
+if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    # --- Quality Checks ---
-    issues = []
-    should_abort = False
-    cloudy_looking = False
-
-    if not is_sky_like(image):
-        issues.append("Image doesn't look like a sky photo.")
-        should_abort = True
-
+    # --- Warnings (not blocking) ---
+    warnings = []
     if is_blurry(image):
-        issues.append("Image might be blurry.")
-        should_abort = True
-
-    if is_overexposed_or_underexposed(image):
-        issues.append("Image is too bright or too dark.")
-        should_abort = True
-
+        warnings.append("Image might be blurry.")
+    if is_dark_or_bright(image):
+        warnings.append("Image may be over/underexposed.")
     if is_mostly_white_or_black(image):
-        issues.append("Sky seems fully covered (cloudy/washed).")
-        cloudy_looking = True
+        warnings.append("Image appears washed out or cloudy.")
 
-    if issues:
-        st.warning("⚠️ Image Quality Issues Detected:")
-        for issue in issues:
-            st.write(f"- {issue}")
+    if warnings:
+        st.warning("⚠️ Image Quality Notes:")
+        for w in warnings:
+            st.write(f"- {w}")
 
-    if should_abort:
-        st.error("⛔ This image is unsuitable for prediction. Please upload a clearer sky image.")
+    # --- Resize and Predict ---
+    img = image.resize((224, 224))  # keep exactly how you trained
+    img_array = np.array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+
+    use_weather_adjustment = False
+    if is_mostly_white_or_black(image):
+        cloud_percent = get_weather_cloud_info(CITY)
+        if cloud_percent and cloud_percent > 75:
+            use_weather_adjustment = True
+
+    if use_weather_adjustment:
+        st.info("☁️ Cloudy weather detected via API. Using minimum PM2.5 value.")
+        pm25_value = MIN_PM25_VALUE
     else:
-        # --- High-Quality Resize ---
-        img_array = keras_image.img_to_array(image)
-        img_array = tf.image.resize(img_array, (224, 224), method='bicubic') / 255.0
-        img_array = np.expand_dims(img_array, axis=0)
+        prediction = model.predict(img_array, verbose=0)
+        pm25_value = float(prediction[0][0])
 
-        use_weather_adjustment = False
-        if cloudy_looking:
-            cloud_percent = get_weather_cloud_info(CITY)
-            if cloud_percent and cloud_percent > 75:
-                use_weather_adjustment = True
-
-        if use_weather_adjustment:
-            st.info("☁️ Cloudy conditions detected in your region. Prediction might be affected. Using minimum plausible value.")
-            pm25_value = MIN_PM25_VALUE
+    def categorize_pm25(pm_value):
+        if pm_value <= 30:
+            return "Good"
+        elif pm_value <= 60:
+            return "Satisfactory"
+        elif pm_value <= 90:
+            return "Moderately Polluted"
+        elif pm_value <= 120:
+            return "Poor"
+        elif pm_value <= 250:
+            return "Very Poor"
         else:
-            prediction = model.predict(img_array, verbose=0)
-            pm25_value = float(prediction[0][0])
+            return "Severe"
 
-        category = categorize_pm25(pm25_value)
+    category = categorize_pm25(pm25_value)
 
-        st.subheader("📊 Prediction")
-        st.write(f"**Predicted PM2.5:** {pm25_value:.2f} µg/m³")
-        st.write(f"**Air Quality Category:** {category}")
+    st.subheader("📊 Prediction")
+    st.write(f"**Predicted PM2.5:** {pm25_value:.2f} µg/m³")
+    st.write(f"**Air Quality Category:** {category}")
