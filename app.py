@@ -116,11 +116,13 @@ def load_pm25_model():
 
 # ------------------ Image Preprocessing ------------------ #
 def preprocess_uploaded_image(uploaded_image):
-    img = Image.open(uploaded_image).convert("RGB")
-    img = img.resize((224, 224))
-    img_array = np.array(img).astype('float32') / 255.0
+    from tensorflow.keras.preprocessing import image as keras_image
+    import tensorflow as tf
+
+    img_array = keras_image.img_to_array(image)  # from PIL Image
+    img_array = tf.image.resize(img_array, (224, 224), method='bilinear')  # Or 'bicubic'
+    img_array = img_array / 255.0
     img_array = np.expand_dims(img_array, axis=0)
-    return img_array, img
 
 # ------------------ Streamlit UI ------------------ #
 st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
