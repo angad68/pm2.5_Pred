@@ -180,7 +180,7 @@ with st.container():
             image = Image.open(uploaded_file).convert("RGB")
             # Resize for display (but not for prediction)
             display_img = image.copy()
-            display_img.thumbnail((300, 300))  # Maintain aspect ratio
+            display_img.thumbnail((600, 600))  # Maintain aspect ratio
             st.image(display_img, caption="Uploaded Image", use_container_width=False)
 
             if image.size[0] < 100 or image.size[1] < 100:
