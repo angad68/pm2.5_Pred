@@ -38,14 +38,21 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     black_pixels = np.sum(np.all(img < black_thresh, axis=2))
     total_pixels = img.shape[0] * img.shape[1]
     return (white_pixels + black_pixels) / total_pixels > percent
+    
+def is_sky_image(pil_img, saturation_thresh=40, brightness_thresh=60, sky_percent=0.25):
+    img = pil_img.resize((128, 128)).convert("RGB")
+    img_np = np.array(img)
 
-def is_sky_image(pil_img, blue_thresh=100, sky_percent=0.25):
-    img = np.array(pil_img.resize((128, 128)))
-    b = img[:, :, 2]
-    g = img[:, :, 1]
-    r = img[:, :, 0]
-    sky_mask = (b > r + 15) & (b > g + 15) & (b > blue_thresh)
-    return np.sum(sky_mask) / sky_mask.size > sky_percent
+    # Convert to HSV for better color understanding
+    hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+    h, s, v = cv2.split(hsv)
+
+    # Conditions for polluted/overcast sky: low saturation, medium-high brightness
+    sky_like_mask = (s < saturation_thresh) & (v > brightness_thresh)
+
+    sky_ratio = np.sum(sky_like_mask) / sky_like_mask.size
+    return sky_ratio > sky_percent
+
 
 # ------------------ PM2.5 Category ------------------ #
 def categorize_pm25(pm_value):
