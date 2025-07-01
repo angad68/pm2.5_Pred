@@ -8,7 +8,7 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense,
 import os
 import requests
 
-# ------------------ Streamlit Page Config & Styles ------------------ #
+# ------------------ Dark Theme CSS ------------------ #
 st.markdown("""
     <style>
     .stApp {
@@ -80,13 +80,14 @@ def is_sky_image(pil_img, sky_percent=0.45):
 
     return weighted_sky_ratio > sky_percent
 
-# ------------------ Load Model ------------------ #
+# ------------------ Constants ------------------ #
 MODEL_PATH = "LIME_20240506.best.hdf5"
 MIN_PM25_VALUE = 20.0
 MAX_FILE_SIZE = 10 * 1024 * 1024
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "7088853eac6948e286555436250107")
 CITY = os.getenv("CITY", "Chandigarh")
 
+# ------------------ Load CNN Model ------------------ #
 @st.cache_resource
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
@@ -131,27 +132,23 @@ def load_pm25_model():
 
 model = load_pm25_model()
 
-# ------------------ Weather API Call ------------------ #
+# ------------------ Weather API ------------------ #
 @st.cache_data
 def fetch_weather_data(city):
     try:
-        weather_url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
-        return requests.get(weather_url).json()
+        url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
+        return requests.get(url).json()
     except Exception as e:
         st.warning(f"⚠️ Could not fetch weather data: {str(e)}")
         return None
 
-# ------------------ Prediction Function ------------------ #
+# ------------------ Prediction ------------------ #
 def predict_pm25(image):
-    resized_for_model = image.resize((224, 224))
-    img_array = np.array(resized_for_model) / 255.0
+    img_resized = image.resize((224, 224))
+    img_array = np.array(img_resized) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
-
-    with st.spinner("Predicting PM2.5 level..."):
-        preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
-        pm25_value = float(np.mean(preds))
-        pm25_std = float(np.std(preds))
-        return max(0.0, min(1000.0, pm25_value)), pm25_std
+    preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
+    return float(np.mean(preds)), float(np.std(preds))
 
 # ------------------ App Layout ------------------ #
 st.title("🌫️ PM2.5 Air Quality Estimator")
@@ -161,68 +158,66 @@ uploaded_file = st.file_uploader("Choose a sky image (JPG/PNG, < 10MB)", type=["
 
 if uploaded_file:
     if uploaded_file.size > MAX_FILE_SIZE:
-        st.error("File too large. Please upload an image smaller than 10MB.")
+        st.error("File too large. Upload image < 10MB.")
         st.stop()
 
     try:
         image = Image.open(uploaded_file).convert("RGB")
-        display_img = image.copy()
-        display_img.thumbnail((500, 500))  # for display
-        col_img, col_pred = st.columns([1, 1.2])
+        if image.size[0] < 100 or image.size[1] < 100:
+            st.error("Image too small. Minimum 100x100 pixels required.")
+            st.stop()
     except Exception as e:
         st.error(f"Invalid image file: {str(e)}")
         st.stop()
 
-    if image.size[0] < 100 or image.size[1] < 100:
-        st.error("Image too small. Minimum 100x100 pixels required.")
-        st.stop()
-
     # Quality Checks
     if is_blurry(image):
-        st.error("Prediction aborted: image is too blurry.")
+        st.error("Too blurry.")
         st.stop()
     if is_overexposed_or_underexposed(image):
-        st.error("Prediction aborted: overexposed or underexposed.")
+        st.error("Over/under exposed.")
         st.stop()
     if is_mostly_white_or_black(image):
-        st.error("Prediction aborted: mostly white/black.")
+        st.error("Mostly white or black.")
         st.stop()
     if not is_sky_image(image):
-        st.error("Prediction aborted: image does not appear to show sky.")
+        st.error("Does not look like a sky image.")
         st.stop()
 
-    # Make Prediction
+    # Predict
     pm25_value, pm25_std = predict_pm25(image)
 
-    # Weather-based Adjustment
+    # Weather adjustment
     weather_data = fetch_weather_data(CITY)
     if weather_data:
         condition = weather_data.get("current", {}).get("condition", {}).get("text", "").lower()
         if "cloud" in condition or "overcast" in condition:
-            st.info(f"☁️ Cloudy/Overcast weather in {CITY.title()}. Adjusting prediction...")
+            st.info(f"☁️ Cloudy in {CITY.title()}. Adjusted prediction.")
             pm25_value = max(pm25_value, MIN_PM25_VALUE)
 
-    # Air Quality Category
-    def categorize_pm25(value):
-        if value <= 30: return "Good"
-        elif value <= 60: return "Satisfactory"
-        elif value <= 90: return "Moderately Polluted"
-        elif value <= 120: return "Poor"
-        elif value <= 250: return "Very Poor"
-        else: return "Severe"
+    # Categorize
+    def categorize_pm25(val):
+        if val <= 30: return "Good"
+        elif val <= 60: return "Satisfactory"
+        elif val <= 90: return "Moderately Polluted"
+        elif val <= 120: return "Poor"
+        elif val <= 250: return "Very Poor"
+        return "Severe"
 
-    category = categorize_pm25(pm25_value)
     colors = {
         "Good": "🟢", "Satisfactory": "🟡", "Moderately Polluted": "🟠",
         "Poor": "🔴", "Very Poor": "🟣", "Severe": "🔴"
     }
 
-    # ------------------ Display ------------------ #
-    with col_img:
-        st.image(display_img, caption="Uploaded Image")
+    # Display
+    display_img = image.copy()
+    display_img.thumbnail((500, 500))
 
-    with col_pred:
+    col1, col2 = st.columns([1, 1.2])
+    with col1:
+        st.image(display_img, caption="Uploaded Image")
+    with col2:
         st.subheader("📊 Prediction Results")
         st.metric("PM2.5 Level", f"{pm25_value:.1f} µg/m³")
         st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
-        st.markdown(f"**Air Quality:** {colors.get(category)} {category}")
+        st.markdown(f"**Air Quality:** {colors[categorize_pm25(pm25_value)]} {categorize_pm25(pm25_value)}")
