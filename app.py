@@ -111,38 +111,68 @@ def comprehensive_image_check(pil_img):
 def load_pm25_model():
     try:
         inputs = Input(shape=(224, 224, 3))
-        x = Conv2D(64, (3, 3), padding='same')(inputs)
+
+        # Block 1
+        x = Conv2D(64, (3, 3), padding='same', name='block1_conv1')(inputs)
         x = LeakyReLU(alpha=0.1)(x)
-        x = Conv2D(64, (3, 3), padding='same')(x)
+        x = Conv2D(64, (3, 3), padding='same', name='block1_conv2')(x)
         x = LeakyReLU(alpha=0.1)(x)
-        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
-        x = Conv2D(128, (3, 3), padding='same')(x)
+        x = MaxPooling2D((3, 3), strides=(2, 2), name='block1_pool')(x)
+
+        # Block 2
+        x = Conv2D(128, (3, 3), padding='same', name='block2_conv1')(x)
         x = LeakyReLU(alpha=0.1)(x)
-        x = Conv2D(128, (3, 3), padding='same')(x)
+        x = Conv2D(128, (3, 3), padding='same', name='block2_conv2')(x)
         x = LeakyReLU(alpha=0.1)(x)
-        pool2 = MaxPooling2D((3, 3), strides=(2, 2))(x)
-        res1 = Conv2D(128, (3, 3), padding='same')(pool2)
-        res1 = LeakyReLU(alpha=0.1)(res1)
-        res1 = Add()([res1, pool2])
-        x = MaxPooling2D((3, 3), strides=(2, 2))(res1)
-        res2 = Conv2D(128, (3, 3), padding='same')(x)
-        res2 = LeakyReLU(alpha=0.1)(res2)
-        res2 = Add()([res2, x])
-        x = MaxPooling2D((3, 3), strides=(2, 2))(res2)
+        x = MaxPooling2D((3, 3), strides=(2, 2), name='block2_pool')(x)
+
+        # Residual Block 3
+        res_input = x
+        x = Conv2D(128, (3, 3), padding='same', name='block3_conv1')(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        x = Add()([x, res_input])
+        x = MaxPooling2D((3, 3), strides=(2, 2), name='block3_pool')(x)
+
+        # Residual Block 4
+        res_input = x
+        x = Conv2D(128, (3, 3), padding='same', name='block4_conv1')(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        x = Add()([x, res_input])
+        x = MaxPooling2D((3, 3), strides=(2, 2), name='block4_pool')(x)
+
+        # Residual Block 5
+        res_input = x
+        x = Conv2D(128, (3, 3), padding='same', name='block5_conv1')(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        x = Add()([x, res_input])
+        x = MaxPooling2D((3, 3), strides=(2, 2), name='block5_pool')(x)
+
+        # Block 6
+        x = Conv2D(256, (3, 3), padding='same', name='block6_conv1')(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        x = Conv2D(256, (3, 3), padding='same', name='block6_conv2')(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        x = MaxPooling2D((3, 3), strides=(2, 2), name='block6_pool')(x)
+
+        # Fully connected
         x = Flatten()(x)
         x = Dense(1024)(x)
         x = LeakyReLU(alpha=0.1)(x)
         x = Dense(1024)(x)
         x = LeakyReLU(alpha=0.1)(x)
-        output = Dense(1)(x)
+        output = Dense(1, activation='linear', name='PM2.5_output')(x)
+
         model = Model(inputs=inputs, outputs=output)
-        model.load_weights(MODEL_PATH)
+        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), loss='mae')
+
+        model.load_weights(LIME_20240506.best.hdf5)
+
         return model
+
     except Exception as e:
-        st.error(f"Model load failed: {e}")
+        st.error(f"❌ Failed to load model: {str(e)}")
         st.stop()
 
-model = load_pm25_model()
 
 # ------------------ STREAMLIT UI ------------------ #
 st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
