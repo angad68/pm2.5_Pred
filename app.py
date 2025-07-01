@@ -3,8 +3,30 @@ import numpy as np
 from PIL import Image
 import cv2
 import tensorflow as tf
+import requests
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU
+
+# ------------------ CONFIG ------------------ #
+
+WEATHER_API_KEY = "7088853eac6948e286555436250107"  # Replace with your WeatherAPI key
+CITY = "Chandigarh"
+
+# ------------------ Weather API ------------------ #
+
+def get_weather_data(city=CITY):
+    url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        return {
+            "cloud": data["current"]["cloud"],
+            "humidity": data["current"]["humidity"],
+            "wind_kph": data["current"]["wind_kph"],
+            "desc": data["current"]["condition"]["text"]
+        }
+    except Exception:
+        return None
 
 # ------------------ Image Quality Checks ------------------ #
 
@@ -27,9 +49,10 @@ def is_mostly_white_or_black(pil_img, white_thresh=230, black_thresh=30, percent
         return True
     return False
 
-# ------------------ Model Definition ------------------ #
+# ------------------ Model Loader ------------------ #
 
 @st.cache_resource
+
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
 
@@ -113,7 +136,7 @@ if uploaded_file is not None:
         issues.append("Image is too dark or too bright.")
     if is_mostly_white_or_black(image):
         issues.append("Image contains too much black or white — possibly blocked or indoor.")
-    
+
     if issues:
         st.error("⚠️ Image Quality Issues Detected:")
         for issue in issues:
@@ -132,3 +155,16 @@ if uploaded_file is not None:
     st.subheader("📊 Prediction")
     st.write(f"**Predicted PM2.5 Value:** {pm25_value:.2f} µg/m³")
     st.write(f"**Air Quality Category (India):** {category}")
+
+    weather = get_weather_data(CITY)
+    if weather:
+        st.subheader(f"🌦️ Current Weather: {CITY}")
+        st.write(f"**Condition:** {weather['desc']}")
+        st.write(f"**Cloud Cover:** {weather['cloud']}%")
+        st.write(f"**Humidity:** {weather['humidity']}%")
+        st.write(f"**Wind:** {weather['wind_kph']} km/h")
+
+        if weather['cloud'] > 80 and pm25_value > 100:
+            st.warning("⚠️ Heavy cloud cover detected. Prediction might overestimate PM2.5 due to cloudy appearance.")
+    else:
+        st.info("Live weather data not available at the moment.")
