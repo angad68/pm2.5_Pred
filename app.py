@@ -8,10 +8,52 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense,
 import os
 import requests
 
-# Configurations
+# ------------------ Quality Checks ------------------ #
+def is_blurry(pil_img, threshold=25.0):
+    img_gray = np.array(pil_img.convert("L"))
+    return cv2.Laplacian(img_gray, cv2.CV_64F).var() < threshold
+
+def is_overexposed_or_underexposed(pil_img, low_thresh=35, high_thresh=220):
+    img_gray = np.array(pil_img.convert("L"))
+    mean_val = np.mean(img_gray)
+    return mean_val < low_thresh or mean_val > high_thresh
+
+def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent=0.75):
+    img = np.array(pil_img)
+    white_pixels = np.sum(np.all(img > white_thresh, axis=2))
+    black_pixels = np.sum(np.all(img < black_thresh, axis=2))
+    total_pixels = img.shape[0] * img.shape[1]
+    return (white_pixels + black_pixels) / total_pixels > percent
+
+def is_sky_image(pil_img, sky_percent=0.3):
+    img = pil_img.resize((256, 256)).convert("RGB")
+    img_np = np.array(img)
+    hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+    h, s, v = cv2.split(hsv)
+
+    blue_sky = ((h >= 100) & (h <= 130)) & (s > 30) & (v > 80)
+    light_blue = ((h >= 80) & (h <= 110)) & (s > 15) & (v > 100)
+    gray_sky = (s < 30) & (v > 120) & (v < 220)
+    bright_areas = (v > 200) & (s < 50)
+
+    sky_mask = blue_sky | light_blue | gray_sky | bright_areas
+
+    height, width = sky_mask.shape
+    weight_mask = np.ones_like(sky_mask, dtype=float)
+    for i in range(height):
+        weight_factor = 1.0 + (height - i) / height
+        weight_mask[i, :] = weight_factor
+
+    weighted_sky_pixels = np.sum(sky_mask * weight_mask)
+    total_weighted_pixels = np.sum(weight_mask)
+    weighted_sky_ratio = weighted_sky_pixels / total_weighted_pixels
+
+    return weighted_sky_ratio > sky_percent
+
+# ------------------ Configurations ------------------ #
 MODEL_PATH = "LIME_20240506.best.hdf5"
 MIN_PM25_VALUE = 20.0
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 10 * 1024 * 1024
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "7088853eac6948e286555436250107")
 CITY = os.getenv("CITY", "Chandigarh")
 
@@ -93,18 +135,28 @@ if uploaded_file:
         st.error(f"Invalid image file: {str(e)}")
         st.stop()
 
-    # Preprocess image
+    warnings = []
+    if is_blurry(image):
+        warnings.append("Image appears blurry.")
+    if is_overexposed_or_underexposed(image):
+        warnings.append("Image may be overexposed or underexposed.")
+    if is_mostly_white_or_black(image):
+        warnings.append("Image has large white/black areas.")
+    if not is_sky_image(image):
+        warnings.append("Image may not contain enough visible sky.")
+
+    if warnings:
+        st.warning("\n".join(warnings))
+
     img = image.resize((224, 224))
     img_array = np.array(img) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    # Predict
     with st.spinner("Predicting PM2.5 level..."):
         prediction = model.predict(img_array)
         pm25_value = float(prediction[0][0])
         pm25_value = max(0.0, min(1000.0, pm25_value))
 
-    # Categorize
     def categorize_pm25(value):
         if value <= 30:
             return "Good"
