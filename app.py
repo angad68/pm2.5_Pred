@@ -15,7 +15,7 @@ def is_blurry(pil_img, threshold=25.0):
 
 def is_overexposed_or_underexposed(pil_img, low_thresh=35, high_thresh=220):
     img_gray = np.array(pil_img.convert("L"))
-    mean_val = np.mean(img_gray)s
+    mean_val = np.mean(img_gray)
     return mean_val < low_thresh or mean_val > high_thresh
 
 def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent=0.75):
