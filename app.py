@@ -4,7 +4,7 @@ import cv2
 import tensorflow as tf
 from PIL import Image
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU
+from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU, Dropout
 import os
 import requests
 
@@ -62,48 +62,50 @@ CITY = os.getenv("CITY", "Chandigarh")
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
 
-    x = Conv2D(64, (3, 3), padding='same', name='block1_conv1')(inputs)
+    x = Conv2D(64, (3, 3), padding='same')(inputs)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(64, (3, 3), padding='same', name='block1_conv2')(x)
+    x = Conv2D(64, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block1_pool')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
-    x = Conv2D(128, (3, 3), padding='same', name='block2_conv1')(x)
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(128, (3, 3), padding='same', name='block2_conv2')(x)
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block2_pool')(x)
-
-    res_input = x
-    x = Conv2D(128, (3, 3), padding='same', name='block3_conv1')(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = Add()([x, res_input])
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block3_pool')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
     res_input = x
-    x = Conv2D(128, (3, 3), padding='same', name='block4_conv1')(x)
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Add()([x, res_input])
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block4_pool')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
     res_input = x
-    x = Conv2D(128, (3, 3), padding='same', name='block5_conv1')(x)
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Add()([x, res_input])
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block5_pool')(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
-    x = Conv2D(256, (3, 3), padding='same', name='block6_conv1')(x)
+    res_input = x
+    x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(256, (3, 3), padding='same', name='block6_conv2')(x)
+    x = Add()([x, res_input])
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+
+    x = Conv2D(256, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2), name='block6_pool')(x)
+    x = Conv2D(256, (3, 3), padding='same')(x)
+    x = LeakyReLU(alpha=0.1)(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
 
     x = Flatten()(x)
     x = Dense(1024)(x)
+    x = Dropout(0.3)(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Dense(1024)(x)
+    x = Dropout(0.3)(x)
     x = LeakyReLU(alpha=0.1)(x)
-    output = Dense(1, activation='linear', name='PM2.5_output')(x)
+    output = Dense(1, activation='linear')(x)
 
     model = Model(inputs=inputs, outputs=output)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), loss='mae')
@@ -152,14 +154,15 @@ if uploaded_file:
     img_array = np.array(img) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    with st.spinner("Predicting PM2.5 level..."):
-        prediction = model.predict(img_array)
-        pm25_value = float(prediction[0][0])
+    with st.spinner("Predicting PM2.5 level with uncertainty estimation..."):
+        preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
+        pm25_value = float(np.mean(preds))
+        pm25_std = float(np.std(preds))
         pm25_value = max(0.0, min(1000.0, pm25_value))
 
     # Weather API Adjustment
     if "cloudy" in CITY.lower() or ("sky" in CITY.lower() and "cloud" in CITY.lower()):
-        pass  # Skip redundant checks
+        pass
     else:
         try:
             weather_url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={CITY}"
@@ -169,7 +172,7 @@ if uploaded_file:
                 st.info(f"☁️ Detected cloudy/overcast weather in {CITY.title()} via WeatherAPI. Prediction may be adjusted.")
                 pm25_value = max(pm25_value, MIN_PM25_VALUE)
         except Exception as e:
-            st.warning(f"Could not fetch weather data. Skipping weather adjustment.")
+            st.warning("Could not fetch weather data. Skipping weather adjustment.")
 
     def categorize_pm25(value):
         if value <= 30:
@@ -200,4 +203,6 @@ if uploaded_file:
     with col1:
         st.metric("PM2.5 Level", f"{pm25_value:.1f} µg/m³")
     with col2:
-        st.metric("Air Quality", f"{colors.get(category)} {category}")
+        st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
+
+    st.markdown(f"**Air Quality:** {colors.get(category)} {category}")
