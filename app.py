@@ -67,15 +67,15 @@ uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png
 
 # PM2.5 to AQI category bins (adjust if needed)
 def categorize_pm25(pm_value):
-    if pm_value <= 12:
+    if pm_value <= 30:
         return "Good"
-    elif pm_value <= 35.4:
+    elif pm_value <= 60:
         return "Moderate"
-    elif pm_value <= 55.4:
+    elif pm_value <= 90:
         return "Unhealthy for Sensitive Groups"
-    elif pm_value <= 150.4:
+    elif pm_value <= 120:
         return "Unhealthy"
-    elif pm_value <= 250.4:
+    elif pm_value <= 250:
         return "Very Unhealthy"
     else:
         return "Hazardous"
