@@ -56,35 +56,66 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     total_pixels = img.shape[0] * img.shape[1]
     return (white_pixels + black_pixels) / total_pixels > percent
 
-def is_sky_image(pil_img, sky_percent=0.40):
+import numpy as np
+import cv2
+from PIL import Image
+
+def is_sky_image(pil_img, base_thresh=0.40):
     """
-    Detects whether the image contains sufficient sky-like regions using HSV color space heuristics.
+    Enhanced sky detection using HSV heuristics + structural checks.
+    Returns True if the image likely contains a significant amount of sky.
     """
+    # Step 1: Resize and convert
     img = pil_img.resize((256, 256)).convert("RGB")
     img_np = np.array(img)
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
 
-    # Define multiple sky-like masks
+    # Step 2: Create HSV masks for various sky types
     blue_sky = ((h >= 95) & (h <= 135)) & (s > 40) & (v > 80)
     light_sky = ((h >= 80) & (h <= 120)) & (s > 20) & (v > 120)
     gray_clouds = (s < 25) & (v > 120) & (v < 230)
     white_clouds = (v > 200) & (s < 35)
 
-    # Combine all masks
     sky_mask = blue_sky | light_sky | gray_clouds | white_clouds
 
-    # Top-weighted mask — since sky usually appears at the top
+    # Step 3: Top-heavy weighting
     height, width = sky_mask.shape
     weight_mask = np.ones_like(sky_mask, dtype=np.float32)
     for i in range(height):
-        weight_mask[i, :] = 1.0 + (1.0 - i / height)  # more weight at top
+        weight_mask[i, :] = 1.5 - (i / height)  # More weight at top
 
+    # Step 4: Weighted sky ratio
     weighted_sky_pixels = np.sum(sky_mask * weight_mask)
     total_weight = np.sum(weight_mask)
-
     weighted_sky_ratio = weighted_sky_pixels / total_weight
-    return weighted_sky_ratio > sky_percent
+
+    # Step 5: Adaptive threshold based on brightness
+    avg_brightness = np.mean(v)
+    adaptive_thresh = base_thresh
+    if avg_brightness < 90:
+        adaptive_thresh -= 0.05
+    elif avg_brightness > 180:
+        adaptive_thresh += 0.05
+
+    if weighted_sky_ratio < adaptive_thresh:
+        return False  # Not enough sky
+
+    # Step 6: Hue consistency check
+    sky_hues = h[sky_mask]
+    if sky_hues.size > 0 and np.std(sky_hues) > 25:
+        return False  # Hue too variable, not consistent sky
+
+    # Step 7: Component size check
+    num_labels, labels = cv2.connectedComponents(sky_mask.astype(np.uint8))
+    if num_labels <= 1:
+        return False  # No sky component
+    largest_component = max(np.bincount(labels.flatten())[1:])  # Ignore background
+    if largest_component < 0.02 * sky_mask.size:
+        return False  # Too small to be meaningful
+
+    return True  # Sky detected
+
 
 # ------------------ Constants ------------------ #
 MODEL_PATH = "LIME_20240506.best.hdf5"
