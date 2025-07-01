@@ -67,49 +67,56 @@ def categorize_pm25(pm_value):
 @st.cache_resource
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
+
     x = Conv2D(64, (3, 3), padding='same')(inputs)
     x = LeakyReLU(alpha=0.1)(x)
     x = Conv2D(64, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 111x111
 
     x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    pool2 = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    pool2 = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 55x55
 
     x = Conv2D(128, (3, 3), padding='same')(pool2)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Add()([x, pool2])
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+
+    # Downsample pool2 to match shape of x
+    residual = Conv2D(128, (1, 1), padding='same')(pool2)
+    residual = MaxPooling2D((2, 2), strides=(2, 2))(residual)  # 55x55 → 27x27
+
+    x = Add()([x, residual])
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 13x13
 
     x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Add()([x, pool2])
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    x = Add()([x, x])  # simple self-residual
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 6x6
 
     x = Conv2D(128, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = Add()([x, pool2])
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    x = Add()([x, x])  # another self-residual
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 2x2
 
     x = Conv2D(256, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Conv2D(256, (3, 3), padding='same')(x)
     x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 1x1
 
     x = Flatten()(x)
     x = Dense(1024)(x)
     x = LeakyReLU(alpha=0.1)(x)
     x = Dense(1024)(x)
     x = LeakyReLU(alpha=0.1)(x)
-    output = Dense(1, activation='linear')(x)
+    pm25 = Dense(1, activation='linear')(x)
 
-    model = Model(inputs=inputs, outputs=output)
+    model = Model(inputs=inputs, outputs=pm25)
     model.load_weights("LIME_20240506.best.hdf5")
     return model
+
 
 # ------------------ Streamlit App ------------------ #
 
