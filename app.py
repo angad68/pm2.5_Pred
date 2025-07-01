@@ -6,6 +6,32 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU
 
+
+WEATHER_API_KEY = "7088853eac6948e286555436250107"  # Replace with your WeatherAPI key
+
+# ------------------ API ------------------ #
+
+
+import requests
+
+def get_weather_data(city="Delhi"):
+    url = f"http://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
+    try:
+        response = requests.get(url)
+        data = response.json()
+
+        weather_info = {
+            "cloud": data["current"]["cloud"],  # % cloud cover
+            "humidity": data["current"]["humidity"],
+            "wind_kph": data["current"]["wind_kph"],
+            "desc": data["current"]["condition"]["text"]
+        }
+        return weather_info
+    except Exception as e:
+        return None
+
+
+
 # ------------------ Image Quality Checks ------------------ #
 
 def is_blurry(pil_img, threshold=50.0):  # was 100
