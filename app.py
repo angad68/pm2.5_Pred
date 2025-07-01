@@ -131,7 +131,29 @@ def load_pm25_model():
 
 model = load_pm25_model()
 
+# ------------------ Weather API Call ------------------ #
+@st.cache_data
+def fetch_weather_data(city):
+    try:
+        weather_url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
+        weather_data = requests.get(weather_url).json()
+        return weather_data
+    except Exception as e:
+        st.warning(f"⚠️ Could not fetch weather data: {str(e)}")
+        return None
+
 # ------------------ Upload & Predict ------------------ #
+def predict_pm25(image):
+    img = image.resize((224, 224))
+    img_array = np.array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+
+    with st.spinner("Predicting PM2.5 level with uncertainty estimation..."):
+        preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
+        pm25_value = float(np.mean(preds))
+        pm25_std = float(np.std(preds))
+        return max(0.0, min(1000.0, pm25_value)), pm25_std
+
 with st.container():
     st.subheader("📤 Upload Image")
     uploaded_file = st.file_uploader("Choose a sky image (JPG/PNG, < 10MB)", type=["jpg", "jpeg", "png"])
@@ -164,26 +186,15 @@ with st.container():
             st.error("Prediction aborted: image does not appear to show sky.")
             st.stop()
 
-        img = image.resize((224, 224))
-        img_array = np.array(img) / 255.0
-        img_array = np.expand_dims(img_array, axis=0)
-
-        with st.spinner("Predicting PM2.5 level with uncertainty estimation..."):
-            preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
-            pm25_value = float(np.mean(preds))
-            pm25_std = float(np.std(preds))
-            pm25_value = max(0.0, min(1000.0, pm25_value))
+        pm25_value, pm25_std = predict_pm25(image)
 
         # Weather API
-        try:
-            weather_url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={CITY}"
-            weather_data = requests.get(weather_url).json()
+        weather_data = fetch_weather_data(CITY)
+        if weather_data:
             condition = weather_data.get("current", {}).get("condition", {}).get("text", "").lower()
             if "cloud" in condition or "overcast" in condition:
                 st.info(f"☁️ Detected cloudy/overcast weather in {CITY.title()}. Prediction adjusted.")
                 pm25_value = max(pm25_value, MIN_PM25_VALUE)
-        except:
-            st.warning("⚠️ Could not fetch weather data. Skipping weather adjustment.")
 
         def categorize_pm25(value):
             if value <= 30:
@@ -215,3 +226,4 @@ with st.container():
         col1.metric("PM2.5 Level", f"{pm25_value:.1f} µg/m³")
         col2.metric("Uncertainty (±)", f"{pm25_std:.1f}")
         st.markdown(f"**Air Quality:** {colors.get(category)} {category}")
+
