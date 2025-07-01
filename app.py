@@ -180,13 +180,19 @@ def fetch_weather_data(city):
         return None
 
 # ------------------ Prediction ------------------ #
+USE_UNCERTAINTY = False  # Toggle this
+
 def predict_pm25(image):
     img_resized = image.resize((224, 224))
     img_array = np.array(img_resized) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
-    preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
-    return float(np.mean(preds)), float(np.std(preds))
 
+    if USE_UNCERTAINTY:
+        preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
+        return float(np.mean(preds)), float(np.std(preds))
+    else:
+        pm25_value = float(model(img_array, training=False).numpy().squeeze())
+        return pm25_value, 0.0
 # ------------------ App Layout ------------------ #
 st.title("🌫️ PM2.5 Air Quality Estimator")
 
