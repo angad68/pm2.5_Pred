@@ -8,17 +8,17 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense,
 
 # ------------------ Image Quality Checks ------------------ #
 
-def is_blurry(pil_img, threshold=100.0):
+def is_blurry(pil_img, threshold=50.0):  # was 100
     img_gray = np.array(pil_img.convert("L"))
     laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var()
     return laplacian_var < threshold
 
-def is_overexposed_or_underexposed(pil_img, low_thresh=40, high_thresh=215):
+def is_overexposed_or_underexposed(pil_img, low_thresh=30, high_thresh=240):  # was 40–215
     img_gray = np.array(pil_img.convert("L"))
     mean_val = np.mean(img_gray)
     return mean_val < low_thresh or mean_val > high_thresh
 
-def is_mostly_white_or_black(pil_img, white_thresh=230, black_thresh=30, percent=0.6):
+def is_mostly_white_or_black(pil_img, white_thresh=240, black_thresh=20, percent=0.75):  # was 230/30, 60%
     img = np.array(pil_img)
     white_pixels = np.sum(np.all(img > white_thresh, axis=2))
     black_pixels = np.sum(np.all(img < black_thresh, axis=2))
@@ -26,6 +26,7 @@ def is_mostly_white_or_black(pil_img, white_thresh=230, black_thresh=30, percent
     if white_pixels / total_pixels > percent or black_pixels / total_pixels > percent:
         return True
     return False
+
 
 # ------------------ Model Definition ------------------ #
 
