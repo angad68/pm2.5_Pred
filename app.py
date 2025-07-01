@@ -181,7 +181,7 @@ with st.container():
             # Resize for display (but not for prediction)
             display_img = image.copy()
             display_img.thumbnail((600, 600))  # Maintain aspect ratio
-            st.image(display_img, caption="Uploaded Image", use_container_width=False)
+            col_img, col_pred = st.columns([1, 1.2]) 
 
             if image.size[0] < 100 or image.size[1] < 100:
                 st.error("Image too small. Minimum 100x100 pixels required.")
@@ -237,11 +237,13 @@ with st.container():
             "Very Poor": "🟣",
             "Severe": "🔴"
         }
+with col_img:
+    display_img = image.copy()
+    display_img.thumbnail((400, 400))
+    st.image(display_img, caption="Uploaded Image", use_container_width=False)
 
-        st.markdown("---")
-        st.subheader("📊 Prediction Results")
-        col1, col2 = st.columns(2)
-        col1.metric("PM2.5 Level", f"{pm25_value:.1f} µg/m³")
-        col2.metric("Uncertainty (±)", f"{pm25_std:.1f}")
-        st.markdown(f"**Air Quality:** {colors.get(category)} {category}")
-
+with col_pred:
+    st.subheader("📊 Prediction Results")
+    st.metric("PM2.5 Level", f"{pm25_value:.1f} µg/m³")
+    st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
+    st.markdown(f"**Air Quality:** {colors.get(category)} {category}")
