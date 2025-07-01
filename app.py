@@ -9,42 +9,28 @@ import os
 import requests
 
 # ------------------ Streamlit Page Config & Styles ------------------ #
-# Must go after `import streamlit as st`
 st.markdown("""
     <style>
-    /* Make main background black */
     .stApp {
         background-color: #111111;
         color: #E0E0E0;
     }
-
-    /* Override white container */
     .block-container {
         background-color: #111111;
         padding: 2rem 1rem 2rem 1rem;
     }
-
-    /* Change upload box text and border */
     .stFileUploader {
         color: #E0E0E0;
     }
-
-    /* Optional: change sidebar background if used */
     .css-1d391kg, .css-18ni7ap {
         background-color: #111111 !important;
     }
-
-    /* Make headings bolder and white */
     h1, h2, h3, h4 {
         color: #F1F1F1;
     }
-
-    /* Center title */
     .stTitle {
         text-align: center;
     }
-
-    /* Make metrics look sharper */
     .stMetric {
         background-color: #222222;
         border-radius: 0.5rem;
@@ -150,104 +136,93 @@ model = load_pm25_model()
 def fetch_weather_data(city):
     try:
         weather_url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={city}"
-        weather_data = requests.get(weather_url).json()
-        return weather_data
+        return requests.get(weather_url).json()
     except Exception as e:
         st.warning(f"⚠️ Could not fetch weather data: {str(e)}")
         return None
 
-# ------------------ Upload & Predict ------------------ #
+# ------------------ Prediction Function ------------------ #
 def predict_pm25(image):
-    img_array = np.array(resized_image) / 255.0
+    resized_for_model = image.resize((224, 224))
+    img_array = np.array(resized_for_model) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
-    with st.spinner("Predicting PM2.5 level with uncertainty estimation..."):
+
+    with st.spinner("Predicting PM2.5 level..."):
         preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
         pm25_value = float(np.mean(preds))
         pm25_std = float(np.std(preds))
         return max(0.0, min(1000.0, pm25_value)), pm25_std
 
-    with st.spinner("Predicting PM2.5 level with uncertainty estimation..."):
-        preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
-        pm25_value = float(np.mean(preds))
-        pm25_std = float(np.std(preds))
-        return max(0.0, min(1000.0, pm25_value)), pm25_std
+# ------------------ App Layout ------------------ #
+st.title("🌫️ PM2.5 Air Quality Estimator")
 
-with st.container():
-    st.subheader("📤 Upload Image")
-    uploaded_file = st.file_uploader("Choose a sky image (JPG/PNG, < 10MB)", type=["jpg", "jpeg", "png"])
-    if uploaded_file:
-        if uploaded_file.size > MAX_FILE_SIZE:
-            st.error("File too large. Please upload an image smaller than 10MB.")
-            st.stop()
+st.subheader("📤 Upload Image")
+uploaded_file = st.file_uploader("Choose a sky image (JPG/PNG, < 10MB)", type=["jpg", "jpeg", "png"])
 
-        try:
-            image = Image.open(uploaded_file).convert("RGB")
-            # Resize for display (but not for prediction)
-            display_img = image.copy()
-            display_img.thumbnail((600, 600))  # Maintain aspect ratio
-            col_img, col_pred = st.columns([1, 1.2]) 
+if uploaded_file:
+    if uploaded_file.size > MAX_FILE_SIZE:
+        st.error("File too large. Please upload an image smaller than 10MB.")
+        st.stop()
 
-            if image.size[0] < 100 or image.size[1] < 100:
-                st.error("Image too small. Minimum 100x100 pixels required.")
-                st.stop()
-        except Exception as e:
-            st.error(f"Invalid image file: {str(e)}")
-            st.stop()
+    try:
+        image = Image.open(uploaded_file).convert("RGB")
+        display_img = image.copy()
+        display_img.thumbnail((600, 600))  # for display
+        col_img, col_pred = st.columns([1, 1.2])
+    except Exception as e:
+        st.error(f"Invalid image file: {str(e)}")
+        st.stop()
 
-        # Block prediction on quality issues
-        if is_blurry(image):
-            st.error("Prediction aborted: image is too blurry.")
-            st.stop()
-        if is_overexposed_or_underexposed(image):
-            st.error("Prediction aborted: overexposed or underexposed.")
-            st.stop()
-        if is_mostly_white_or_black(image):
-            st.error("Prediction aborted: mostly white/black.")
-            st.stop()
-        if not is_sky_image(image):
-            st.error("Prediction aborted: image does not appear to show sky.")
-            st.stop()
+    if image.size[0] < 100 or image.size[1] < 100:
+        st.error("Image too small. Minimum 100x100 pixels required.")
+        st.stop()
 
-        pm25_value, pm25_std = predict_pm25(image)
+    # Quality Checks
+    if is_blurry(image):
+        st.error("Prediction aborted: image is too blurry.")
+        st.stop()
+    if is_overexposed_or_underexposed(image):
+        st.error("Prediction aborted: overexposed or underexposed.")
+        st.stop()
+    if is_mostly_white_or_black(image):
+        st.error("Prediction aborted: mostly white/black.")
+        st.stop()
+    if not is_sky_image(image):
+        st.error("Prediction aborted: image does not appear to show sky.")
+        st.stop()
 
-        # Weather API
-        weather_data = fetch_weather_data(CITY)
-        if weather_data:
-            condition = weather_data.get("current", {}).get("condition", {}).get("text", "").lower()
-            if "cloud" in condition or "overcast" in condition:
-                st.info(f"☁️ Detected cloudy/overcast weather in {CITY.title()}. Prediction adjusted.")
-                pm25_value = max(pm25_value, MIN_PM25_VALUE)
+    # Make Prediction
+    pm25_value, pm25_std = predict_pm25(image)
 
-        def categorize_pm25(value):
-            if value <= 30:
-                return "Good"
-            elif value <= 60:
-                return "Satisfactory"
-            elif value <= 90:
-                return "Moderately Polluted"
-            elif value <= 120:
-                return "Poor"
-            elif value <= 250:
-                return "Very Poor"
-            else:
-                return "Severe"
+    # Weather-based Adjustment
+    weather_data = fetch_weather_data(CITY)
+    if weather_data:
+        condition = weather_data.get("current", {}).get("condition", {}).get("text", "").lower()
+        if "cloud" in condition or "overcast" in condition:
+            st.info(f"☁️ Cloudy/Overcast weather in {CITY.title()}. Adjusting prediction...")
+            pm25_value = max(pm25_value, MIN_PM25_VALUE)
 
-        category = categorize_pm25(pm25_value)
-        colors = {
-            "Good": "🟢",
-            "Satisfactory": "🟡",
-            "Moderately Polluted": "🟠",
-            "Poor": "🔴",
-            "Very Poor": "🟣",
-            "Severe": "🔴"
-        }
-with col_img:
-    display_img = image.copy()
-    display_img.thumbnail((490, 500))
-    st.image(display_img, caption="Uploaded Image", use_container_width=False)
+    # Air Quality Category
+    def categorize_pm25(value):
+        if value <= 30: return "Good"
+        elif value <= 60: return "Satisfactory"
+        elif value <= 90: return "Moderately Polluted"
+        elif value <= 120: return "Poor"
+        elif value <= 250: return "Very Poor"
+        else: return "Severe"
 
-with col_pred:
-    st.subheader("📊 Prediction Results")
-    st.metric("PM2.5 Level", f"{pm25_value:.1f} µg/m³")
-    st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
-    st.markdown(f"**Air Quality:** {colors.get(category)} {category}")
+    category = categorize_pm25(pm25_value)
+    colors = {
+        "Good": "🟢", "Satisfactory": "🟡", "Moderately Polluted": "🟠",
+        "Poor": "🔴", "Very Poor": "🟣", "Severe": "🔴"
+    }
+
+    # ------------------ Display ------------------ #
+    with col_img:
+        st.image(display_img, caption="Uploaded Image")
+
+    with col_pred:
+        st.subheader("📊 Prediction Results")
+        st.metric("PM2.5 Level", f"{pm25_value:.1f} µg/m³")
+        st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
+        st.markdown(f"**Air Quality:** {colors.get(category)} {category}")
