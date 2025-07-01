@@ -157,6 +157,20 @@ if uploaded_file:
         pm25_value = float(prediction[0][0])
         pm25_value = max(0.0, min(1000.0, pm25_value))
 
+    # Weather API Adjustment
+    if "cloudy" in CITY.lower() or ("sky" in CITY.lower() and "cloud" in CITY.lower()):
+        pass  # Skip redundant checks
+    else:
+        try:
+            weather_url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={CITY}"
+            weather_data = requests.get(weather_url).json()
+            condition = weather_data.get("current", {}).get("condition", {}).get("text", "").lower()
+            if "cloud" in condition or "overcast" in condition:
+                st.info(f"☁️ Detected cloudy/overcast weather in {CITY.title()} via WeatherAPI. Prediction may be adjusted.")
+                pm25_value = max(pm25_value, MIN_PM25_VALUE)
+        except Exception as e:
+            st.warning(f"Could not fetch weather data. Skipping weather adjustment.")
+
     def categorize_pm25(value):
         if value <= 30:
             return "Good"
