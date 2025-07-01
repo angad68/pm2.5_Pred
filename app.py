@@ -56,7 +56,7 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     total_pixels = img.shape[0] * img.shape[1]
     return (white_pixels + black_pixels) / total_pixels > percent
 
-def is_sky_image(pil_img, sky_percent=0.35):
+def is_sky_image(pil_img, sky_percent=0.40):
     """
     Detects whether the image contains sufficient sky-like regions using HSV color space heuristics.
     """
