@@ -64,58 +64,41 @@ def categorize_pm25(pm_value):
 
 # ------------------ Model Loader ------------------ #
 
-@st.cache_resource
 def load_pm25_model():
-    inputs = Input(shape=(224, 224, 3))
+    input_layer = Input(shape=(224, 224, 3))
 
-    x = Conv2D(64, (3, 3), padding='same')(inputs)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(64, (3, 3), padding='same')(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 111x111
+    # Initial layers
+    x = Conv2D(32, (3, 3), activation='relu', padding='same')(input_layer)
+    x = MaxPooling2D((2, 2))(x)  # 112x112
+    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2))(x)  # 56x56
 
-    x = Conv2D(128, (3, 3), padding='same')(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(128, (3, 3), padding='same')(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    pool2 = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 55x55
+    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2))(x)  # 28x28
+    pool2 = x  # save this for residual connection
 
-    x = Conv2D(128, (3, 3), padding='same')(pool2)
-    x = LeakyReLU(alpha=0.1)(x)
+    # Convolutions before Add
+    x = Conv2D(128, (3, 3), padding='same')(pool2)     # 28x28
+    x = Conv2D(128, (3, 3), padding='same')(x)         # 28x28
 
-    # Downsample pool2 to match shape of x
-    residual = Conv2D(128, (1, 1), padding='same')(pool2)
-    residual = MaxPooling2D((2, 2), strides=(2, 2))(residual)  # 55x55 → 27x27
+    # Residual connection (match shape to x)
+    residual = Conv2D(128, (1, 1), padding='same')(pool2)  # 28x28, no pooling here
 
-    x = Add()([x, residual])
+    # Add them
+    x = Add()([x, residual])  # both are (28, 28, 128)
+
+    # Continue your model
     x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 13x13
 
     x = Conv2D(128, (3, 3), padding='same')(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = Add()([x, x])  # simple self-residual
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 6x6
-
-    x = Conv2D(128, (3, 3), padding='same')(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = Add()([x, x])  # another self-residual
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 2x2
-
-    x = Conv2D(256, (3, 3), padding='same')(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = Conv2D(256, (3, 3), padding='same')(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)  # -> 1x1
-
     x = Flatten()(x)
-    x = Dense(1024)(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    x = Dense(1024)(x)
-    x = LeakyReLU(alpha=0.1)(x)
-    pm25 = Dense(1, activation='linear')(x)
+    x = Dense(64, activation='relu')(x)
+    x = Dense(1)(x)
 
-    model = Model(inputs=inputs, outputs=pm25)
-    model.load_weights("LIME_20240506.best.hdf5")
+    model = Model(inputs=input_layer, outputs=x)
+    model.load_weights('pm25_model.hdf5')
     return model
+
 
 
 # ------------------ Streamlit App ------------------ #
