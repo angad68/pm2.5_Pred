@@ -96,7 +96,8 @@ def load_pm25_model():
     x = Dense(1)(x)
 
     model = Model(inputs=input_layer, outputs=x)
-    model.load_weights('pm25_model.hdf5')
+    model.load_weights('LIME_20240506.best.hdf5')
+
     return model
 
 
