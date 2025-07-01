@@ -119,8 +119,24 @@ model = load_pm25_model()
 
 # ------------------ Streamlit UI ------------------ #
 st.set_page_config(page_title="PM2.5 Predictor", layout="centered")
-st.title("🌫️ PM2.5 Level Predictor")
-st.write("Upload a sky image to predict PM2.5 air quality level.")
+# Custom CSS for layout
+st.markdown("""
+    <style>
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            color: #3366cc;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# Fancy centered header
+st.markdown("<h1 style='text-align: center;'>🌫️ PM2.5 Air Quality Estimator</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Upload a clear sky image to predict real-time air pollution (PM2.5) levels using deep learning.</p>", unsafe_allow_html=True)
+st.markdown("---")
 
 uploaded_file = st.file_uploader("Choose a sky image...", type=["jpg", "jpeg", "png"])
 
@@ -139,6 +155,22 @@ if uploaded_file:
         st.error(f"Invalid image file: {str(e)}")
         st.stop()
 
+
+with st.sidebar:
+    st.header("ℹ️ About")
+    st.markdown("""
+    This app uses a custom-trained CNN model to estimate PM2.5 levels based on sky images.
+
+    - Model: VGG16-style with residuals  
+    - Input: 224x224 RGB  
+    - Output: PM2.5 (µg/m³)
+    """)
+    st.markdown("---")
+    CITY = st.text_input("City for Weather API", value=CITY)
+
+
+
+    
     # Run all quality checks and block prediction if any fails
     if is_blurry(image):
         st.error("Prediction aborted: image is too blurry.")
