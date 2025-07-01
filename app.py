@@ -239,7 +239,7 @@ with st.container():
         }
 with col_img:
     display_img = image.copy()
-    display_img.thumbnail((500, 500))
+    display_img.thumbnail((490, 500))
     st.image(display_img, caption="Uploaded Image", use_container_width=False)
 
 with col_pred:
