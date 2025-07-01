@@ -9,35 +9,49 @@ import os
 import requests
 
 # ------------------ Streamlit Page Config & Styles ------------------ #
-st.set_page_config(page_title="PM2.5 Air Quality Predictor", layout="centered")
-
+# Must go after `import streamlit as st`
 st.markdown("""
     <style>
-        .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-            background-color: #f7f9fc;
-            font-family: 'Segoe UI', sans-serif;
-        }
-        h1, h2, h3 {
-            color: #003366;
-        }
-        .stButton>button {
-            background-color: #003366;
-            color: white;
-            border-radius: 8px;
-            padding: 0.5em 1.2em;
-            border: none;
-        }
-        .stMetricValue {
-            font-size: 1.4rem !important;
-        }
+    /* Make main background black */
+    .stApp {
+        background-color: #111111;
+        color: #E0E0E0;
+    }
+
+    /* Override white container */
+    .block-container {
+        background-color: #111111;
+        padding: 2rem 1rem 2rem 1rem;
+    }
+
+    /* Change upload box text and border */
+    .stFileUploader {
+        color: #E0E0E0;
+    }
+
+    /* Optional: change sidebar background if used */
+    .css-1d391kg, .css-18ni7ap {
+        background-color: #111111 !important;
+    }
+
+    /* Make headings bolder and white */
+    h1, h2, h3, h4 {
+        color: #F1F1F1;
+    }
+
+    /* Center title */
+    .stTitle {
+        text-align: center;
+    }
+
+    /* Make metrics look sharper */
+    .stMetric {
+        background-color: #222222;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+    }
     </style>
 """, unsafe_allow_html=True)
-
-st.markdown("<h1 style='text-align: center;'>🌫️ PM2.5 Air Quality Estimator</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 1.1rem;'>AI-powered prediction from sky images using a custom CNN model</p>", unsafe_allow_html=True)
-st.markdown("---")
 
 # ------------------ Quality Check Functions ------------------ #
 def is_blurry(pil_img, threshold=25.0):
