@@ -56,28 +56,34 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     total_pixels = img.shape[0] * img.shape[1]
     return (white_pixels + black_pixels) / total_pixels > percent
 
-def is_sky_image(pil_img, sky_percent=0.45):
+def is_sky_image(pil_img, sky_percent=0.35):
+    """
+    Detects whether the image contains sufficient sky-like regions using HSV color space heuristics.
+    """
     img = pil_img.resize((256, 256)).convert("RGB")
     img_np = np.array(img)
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
 
-    blue_sky = ((h >= 100) & (h <= 130)) & (s > 40) & (v > 90)
-    light_blue = ((h >= 85) & (h <= 110)) & (s > 20) & (v > 110)
-    gray_sky = (s < 20) & (v > 130) & (v < 210)
-    bright_areas = (v > 210) & (s < 30)
+    # Define multiple sky-like masks
+    blue_sky = ((h >= 95) & (h <= 135)) & (s > 40) & (v > 80)
+    light_sky = ((h >= 80) & (h <= 120)) & (s > 20) & (v > 120)
+    gray_clouds = (s < 25) & (v > 120) & (v < 230)
+    white_clouds = (v > 200) & (s < 35)
 
-    sky_mask = blue_sky | light_blue | gray_sky | bright_areas
+    # Combine all masks
+    sky_mask = blue_sky | light_sky | gray_clouds | white_clouds
 
+    # Top-weighted mask — since sky usually appears at the top
     height, width = sky_mask.shape
-    weight_mask = np.ones_like(sky_mask, dtype=float)
+    weight_mask = np.ones_like(sky_mask, dtype=np.float32)
     for i in range(height):
-        weight_mask[i, :] = 1.0 + (height - i) / height
+        weight_mask[i, :] = 1.0 + (1.0 - i / height)  # more weight at top
 
     weighted_sky_pixels = np.sum(sky_mask * weight_mask)
-    total_weighted_pixels = np.sum(weight_mask)
-    weighted_sky_ratio = weighted_sky_pixels / total_weighted_pixels
+    total_weight = np.sum(weight_mask)
 
+    weighted_sky_ratio = weighted_sky_pixels / total_weight
     return weighted_sky_ratio > sky_percent
 
 # ------------------ Constants ------------------ #
