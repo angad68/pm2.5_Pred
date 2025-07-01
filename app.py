@@ -39,18 +39,68 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     total_pixels = img.shape[0] * img.shape[1]
     return (white_pixels + black_pixels) / total_pixels > percent
     
-def is_sky_image(pil_img, saturation_thresh=40, brightness_thresh=60, sky_percent=0.25):
-    img = pil_img.resize((128, 128)).convert("RGB")
+def is_sky_image(pil_img, sky_percent=0.3):
+    # Resize for faster processing
+    img = pil_img.resize((256, 256)).convert("RGB")
     img_np = np.array(img)
-
-    # Convert to HSV for better color understanding
+    
+    # Convert to HSV
     hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv)
+    
+    # Multiple sky detection criteria
+    sky_mask = np.zeros_like(h, dtype=bool)
+    
+    # 1. Blue sky (clear sky)
+    blue_sky = ((h >= 100) & (h <= 130)) & (s > 30) & (v > 80)
+    
+    # 2. Light blue/cyan sky
+    light_blue = ((h >= 80) & (h <= 110)) & (s > 15) & (v > 100)
+    
+    # 3. Overcast/gray sky (low saturation, medium-high brightness)
+    gray_sky = (s < 30) & (v > 120) & (v < 220)
+    
+    # 4. White/very bright areas (clouds, bright overcast)
+    bright_areas = (v > 200) & (s < 50)
+    
+    # Combine all sky conditions
+    sky_mask = blue_sky | light_blue | gray_sky | bright_areas
+    
+    # Weight upper portion of image more heavily (sky is usually at top)
+    height, width = sky_mask.shape
+    weight_mask = np.ones_like(sky_mask, dtype=float)
+    
+    # Create gradient weight (top gets more weight)
+    for i in range(height):
+        weight_factor = 1.0 + (height - i) / height  # Top rows get higher weight
+        weight_mask[i, :] = weight_factor
+    
+    # Calculate weighted sky ratio
+    weighted_sky_pixels = np.sum(sky_mask * weight_mask)
+    total_weighted_pixels = np.sum(weight_mask)
+    weighted_sky_ratio = weighted_sky_pixels / total_weighted_pixels
+    
+    return weighted_sky_ratio > sky_percent
 
-    # Conditions for polluted/overcast sky: low saturation, medium-high brightness
-    sky_like_mask = (s < saturation_thresh) & (v > brightness_thresh)
-
-    sky_ratio = np.sum(sky_like_mask) / sky_like_mask.size
+# Alternative simpler version focusing on spatial analysis
+def is_sky_image_simple(pil_img, sky_percent=0.4):
+    img = pil_img.resize((128, 128)).convert("RGB")
+    img_np = np.array(img)
+    
+    # Focus on top 60% of image where sky usually is
+    top_portion = img_np[:int(0.6 * img_np.shape[0]), :]
+    
+    hsv_top = cv2.cvtColor(top_portion, cv2.COLOR_RGB2HSV)
+    h, s, v = cv2.split(hsv_top)
+    
+    # Multiple sky conditions
+    blue_sky = ((h >= 90) & (h <= 140)) & (s > 20)
+    gray_sky = (s < 40) & (v > 100)
+    bright_sky = (v > 180) & (s < 60)
+    
+    sky_mask = blue_sky | gray_sky | bright_sky
+    sky_ratio = np.sum(sky_mask) / sky_mask.size
+    
     return sky_ratio > sky_percent
 
 
