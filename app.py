@@ -207,6 +207,7 @@ if is_cloudy_image(image):
             st.info(f"☁️ WeatherAPI: Cloudy in {CITY.title()} — adjusted value.")
             pm25_val = max(pm25_val, MIN_PM25_VALUE)
 
+
     # Display
     display_img = image.copy()
     display_img.thumbnail((500, 500))
