@@ -28,7 +28,7 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 
 
 # ------------------ Image Quality Checks ------------------ #
-def is_blurry(pil_img, threshold=25.0):
+def is_blurry(pil_img, threshold=10.0):
     return cv2.Laplacian(np.array(pil_img.convert("L")), cv2.CV_64F).var() < threshold
 
 def is_overexposed_or_underexposed(pil_img, low=35, high=220):
