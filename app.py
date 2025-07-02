@@ -164,7 +164,7 @@ colors = {
 
 # ------------------ App ------------------ #
 st.title("🌫️ PM2.5 Air Quality Estimator")
-input_mode = st.radio("Select input method:", ["📷 Use Webcam", "📁 Upload Image"])
+input_mode = st.radio("Select input method:", ["📁 Upload Image", "📷 Use Webcam"])
 image = None
 
 if input_mode == "📁 Upload Image":
