@@ -199,13 +199,13 @@ if image:
 
     pm25_val, pm25_std = predict_pm25(image)
 
-if is_cloudy_image(image):
-    weather_data = fetch_weather_data(CITY)
-    if weather_data:
-        condition = weather_data.get("current", {}).get("condition", {}).get("text", "").lower()
-        if "cloud" in condition or "overcast" in condition:
-            st.info(f"☁️ WeatherAPI: Cloudy in {CITY.title()} — adjusted value.")
-            pm25_val = max(pm25_val, MIN_PM25_VALUE)
+    if is_cloudy_image(image):
+        weather_data = fetch_weather_data(CITY)
+        if weather_data:
+            condition = weather_data.get("current", {}).get("condition", {}).get("text", "").lower()
+            if "cloud" in condition or "overcast" in condition:
+                st.info(f"☁️ WeatherAPI: Cloudy in {CITY.title()} — adjusted value.")
+                pm25_val = max(pm25_val, MIN_PM25_VALUE)
 
     # Display
     display_img = image.copy()
@@ -220,4 +220,5 @@ if is_cloudy_image(image):
         st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
         category = categorize_pm25(pm25_val)
         st.markdown(f"**Air Quality:** {colors[category]} {category}")
+
 
