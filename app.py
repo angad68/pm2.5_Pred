@@ -28,8 +28,41 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 
 
 # ------------------ Image Quality Checks ------------------ #
-def is_blurry(pil_img, threshold=5.0):
-    return cv2.Laplacian(np.array(pil_img.convert("L")), cv2.CV_64F).var() < threshold
+import cv2
+import numpy as np
+from PIL import Image
+
+def is_blurry(pil_img, threshold=5.0, resize=False, debug=False):
+    """
+    Detects if an image is blurry using the Laplacian variance method.
+
+    Args:
+        pil_img (PIL.Image): Input image.
+        threshold (float): Variance threshold. Lower values = more blurry.
+        resize (bool): Resize image to 224x224 before analysis (optional).
+        debug (bool): Print variance value for debugging.
+
+    Returns:
+        bool: True if blurry, False otherwise.
+    """
+    # Convert to grayscale
+    img = pil_img.convert("L")
+    
+    # Optionally resize for consistency
+    if resize:
+        img = img.resize((224, 224))
+
+    # Convert to NumPy array
+    img_np = np.array(img)
+
+    # Compute Laplacian and its variance
+    laplacian_var = cv2.Laplacian(img_np, cv2.CV_64F).var()
+
+    if debug:
+        print(f"Laplacian Variance: {laplacian_var}")
+
+    return laplacian_var < threshold
+
 
 def is_overexposed_or_underexposed(pil_img, low=35, high=220):
     mean_val = np.mean(np.array(pil_img.convert("L")))
