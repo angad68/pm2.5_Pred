@@ -51,7 +51,7 @@ def is_mostly_white_or_black(pil_img, white_thresh=235, black_thresh=25, percent
     black = np.sum(np.all(img < black_thresh, axis=2))
     return (white + black) / (img.shape[0] * img.shape[1]) > percent
 
-def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.15):
+def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.20):
     original_size = pil_img.size
     max_dim = 384
     if max(original_size) > max_dim:
@@ -99,6 +99,29 @@ def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.15):
         (upper_sky_ratio > min_sky_region) and
         (weighted_ratio > 0.1)
     )
+
+def visualize_sky_mask(pil_img):
+    img = pil_img.resize((384, 384), Image.Resampling.LANCZOS).convert("RGB")
+    img_np = np.array(img)
+    hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+    lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+    h, s, v = cv2.split(hsv)
+    _, a, b = cv2.split(lab)
+
+    blue_sky = ((h >= 60) & (h <= 130)) & (s > 30) & (s < 200) & (v > 60) & (v < 240)
+    light_sky = ((h >= 75) & (h <= 150)) & (s > 10) & (s < 80) & (v > 100) & (v < 250) & (b < 140)
+    gray_white_clouds = (s < 40) & (v > 130) & (v < 245) & (np.abs(a - 128) < 15) & (np.abs(b - 128) < 20)
+    warm_sky = (((h >= 0) & (h <= 30)) | ((h >= 130) & (h <= 180))) & (s > 20) & (s < 180) & (v > 80) & (v < 240)
+
+    sky_mask = blue_sky | light_sky | gray_white_clouds | warm_sky
+
+    vis = img_np.copy()
+    vis[sky_mask] = [0, 255, 0]
+    return vis
+
+
+
+
 
 # ------------------ Model Loader ------------------ #
 @st.cache_resource
@@ -205,6 +228,12 @@ if image:
     if not is_sky:
         st.error("Image does not look like sky.")
         st.stop()
+
+
+    if st.checkbox("🔍 Show Sky Detection Debug View"):
+        sky_vis = visualize_sky_mask(image)
+        st.image(sky_vis, caption="Sky Mask Overlay (Green = Detected Sky)")
+
 
     pm25_val, pm25_std = predict_pm25(image)
     
