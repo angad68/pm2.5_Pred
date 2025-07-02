@@ -25,11 +25,6 @@ CITY = os.getenv("CITY", "Chandigarh")
 WEATHER_API_KEY="7088853eac6948e286555436250107"
 USE_UNCERTAINTY = True
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
-if not WEATHER_API_KEY:
-    # Fallback for local dev only (you can remove this block in prod)
-    WEATHER_API_KEY = "7088853eac6948e286555436250107"
-    st.warning("⚠️ Using default WeatherAPI key. Set 'WEATHER_API_KEY' in environment for security.")
-
 
 
 # ------------------ Image Quality Checks ------------------ #
