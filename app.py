@@ -77,6 +77,24 @@ def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.20):
     # New condition for cloudy skies
     cloudy_sky = (s < 50) & (v > 100) & (v < 200)
 
+    dense_clouds = (s < 30) & (v > 150) & (v < 220)  # Bright thick clouds
+    scattered_clouds = (s < 60) & (v > 120) & (v < 200)  # Lighter clouds
+    stormy_clouds = (s > 30) & (v < 100)  # Dark storm clouds
+    
+    sky_mask = (
+        blue_sky | light_sky | gray_white_clouds | warm_sky | 
+        dense_clouds | scattered_clouds | stormy_clouds
+    )
+    
+    # Dynamic threshold adaptation
+    cloud_ratio = np.sum(dense_clouds | scattered_clouds | stormy_clouds) / (h * w)
+    if cloud_ratio > 0.3:  # If significant clouds detected
+        final_threshold = max(adaptive_thresh - 0.1, 0.05)
+
+
+
+
+    
     sky_mask = blue_sky | light_sky | gray_white_clouds | warm_sky | cloudy_sky
     y_coords = np.arange(h).reshape(-1, 1)
     weight_mask = 2.0 * np.exp(-2.5 * y_coords / h) + 0.3
@@ -126,40 +144,57 @@ def visualize_sky_mask(pil_img):
 
 
 
+def detect_cloud_types(pil_img):
+    """Classify cloud types that affect PM2.5 visibility"""
+    img_np = np.array(pil_img.resize((256, 256)))
+    hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+    
+    # Cloud type masks
+    cirrus = (hsv[...,1] < 30) & (hsv[...,2] > 200)
+    cumulus = (hsv[...,1] > 40) & (hsv[...,2] > 150)
+    stratus = (hsv[...,1] < 50) & (hsv[...,2] < 150)
+    
+    return {
+        'cirrus': np.sum(cirrus),
+        'cumulus': np.sum(cumulus),
+        'stratus': np.sum(stratus)
+    }
+def is_valid_cloud_formation(pil_img):
+    cloud_data = detect_cloud_types(pil_img)
+    total_pixels = 256 * 256
+    return (
+        (cloud_data['cirrus']/total_pixels < 0.7) and  # Thin clouds OK
+        (cloud_data['stratus']/total_pixels < 0.5)     # Thick clouds limited
+    )
+
+
 
 
 # ------------------ Model Loader ------------------ #
 @st.cache_resource
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
-    x = inputs
-    for f in [64, 64]:
-        x = Conv2D(f, (3, 3), padding='same')(x)
+    
+    # Initial feature extraction
+    x = Conv2D(64, (7,7), padding='same', activation='swish')(inputs)
+    x = MaxPooling2D((2,2))(x)
+    
+    # Cloud-adaptive blocks
+    for filters in [128, 256]:
+        x = Conv2D(filters, (3,3), padding='same')(x)
+        x = BatchNormalization()(x)
         x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
-    for f in [128, 128]:
-        x = Conv2D(f, (3, 3), padding='same')(x)
-        x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
-    for _ in range(3):
-        skip = x
-        x = Conv2D(128, (3, 3), padding='same')(x)
-        x = LeakyReLU(alpha=0.1)(x)
-        x = Add()([x, skip])
-        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
-    for f in [256, 256]:
-        x = Conv2D(f, (3, 3), padding='same')(x)
-        x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
-    x = Flatten()(x)
-    for _ in range(2):
-        x = Dense(1024)(x)
-        x = Dropout(0.3)(x)
-        x = LeakyReLU(alpha=0.1)(x)
+        x = SpatialAttention()(x)  # Add attention to focus on relevant sky regions
+        x = MaxPooling2D((2,2))(x)
+    
+    # Weather-condition processing
+    x = Conv2D(512, (3,3), dilation_rate=2, activation='swish')(x)
+    x = GlobalAveragePooling2D()(x)
+    
+    # Output with uncertainty estimation
     output = Dense(1, activation='linear')(x)
     model = Model(inputs, output)
-    model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='mae')
-    model.load_weights(MODEL_PATH)
+    model.compile(optimizer=tf.keras.optimizers.Adam(3e-5), loss='huber_loss')
     return model
 
 model = load_pm25_model()
@@ -239,7 +274,19 @@ if image:
         sky_vis = visualize_sky_mask(image)
         st.image(sky_vis, caption="Sky Mask Overlay (Green = Detected Sky)")
 
+if image:
+    if is_mostly_white_or_black(image):
+        st.error("Unable to process: Image lacks contrast")
+        
+    elif not is_valid_cloud_formation(image):
+        st.warning("⚠️ Cloud formation may obscure accurate measurement")
 
+
+
+
+
+    
+    
     pm25_val, pm25_std = predict_pm25(image)
     
     display_img = image.copy()
@@ -253,3 +300,13 @@ if image:
         st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
         category = categorize_pm25(pm25_val)
         st.markdown(f"**Air Quality:** {colors[category]} {category}")
+        # In your prediction display:
+    if st.checkbox("🌥️ Show Weather Analysis"):
+        cloud_data = detect_cloud_types(image)
+        st.write("### Cloud Composition:")
+        st.write(f"- Cirrus (thin): {cloud_data['cirrus']/(256*256):.1%}")
+        st.write(f"- Cumulus (fluffy): {cloud_data['cumulus']/(256*256):.1%}")
+        st.write(f"- Stratus (thick): {cloud_data['stratus']/(256*256):.1%}")
+    
+    if cloud_data['stratus'] > cloud_data['cumulus']:
+        st.warning("Heavy cloud cover detected. Results may be less accurate.")
