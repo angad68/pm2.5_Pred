@@ -43,9 +43,9 @@ def blur_score(pil_img, resize_to=(224, 224)):
     lap_var = cv2.Laplacian(img_np, cv2.CV_64F).var()
     return lap_var
 
+
 def assess_blur(pil_img, is_sky_detected=False):
     score = blur_score(pil_img)
-    # Looser threshold if sky-like image is detected
     threshold = 2.0 if is_sky_detected else 100.0
 
     if score < threshold:
@@ -55,6 +55,8 @@ def assess_blur(pil_img, is_sky_detected=False):
         st.success(f"✅ Image clarity looks good (sharpness score: {score:.2f})")
 
     return score
+
+
 
 
 def is_overexposed_or_underexposed(pil_img, low=35, high=220):
@@ -300,6 +302,7 @@ def predict_pm25(image):
         val = float(model(img_array, training=False).numpy().squeeze())
         return val, 0.0
 
+
 # ------------------ Categorization ------------------ #
 def categorize_pm25(val):
     if val <= 30: return "Good"
@@ -346,16 +349,18 @@ elif input_mode == "📷 Use Webcam":
 
 # ------------------ If image available ------------------ #
 if image:
-    if is_blurry(image):
-        st.error("Image is too blurry.")
-        st.stop()
+    is_sky = is_sky_image(image)
+
+    # Sky-aware blur check
+    _ = assess_blur(image, is_sky_detected=is_sky)
+
     if is_overexposed_or_underexposed(image):
         st.error("Image is over/under exposed.")
         st.stop()
     if is_mostly_white_or_black(image):
         st.error("Image is mostly white or black.")
         st.stop()
-    if not is_sky_image(image):
+    if not is_sky:
         st.error("Image does not look like sky.")
         st.stop()
 
@@ -369,7 +374,6 @@ if image:
                 st.info(f"☁️ WeatherAPI: Cloudy in {CITY.title()} — adjusted value.")
                 pm25_val = max(pm25_val, MIN_PM25_VALUE)
 
-    # Display
     display_img = image.copy()
     display_img.thumbnail((500, 500))
 
