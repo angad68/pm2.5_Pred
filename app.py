@@ -23,7 +23,7 @@ MIN_PM25_VALUE = 20.0
 MAX_FILE_SIZE = 10 * 1024 * 1024
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "your_api_key_here")
 CITY = os.getenv("CITY", "Chandigarh")
-USE_UNCERTAINTY = False
+USE_UNCERTAINTY = st.sidebar.checkbox("Enable Prediction Uncertainty", value=False)
 
 # ------------------ Image Quality Checks ------------------ #
 def is_blurry(pil_img, threshold=25.0):
