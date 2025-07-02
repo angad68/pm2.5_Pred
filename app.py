@@ -174,27 +174,35 @@ def is_valid_cloud_formation(pil_img):
 @st.cache_resource
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
-    
-    # Initial feature extraction
-    x = Conv2D(64, (7,7), padding='same', activation='swish')(inputs)
-    x = MaxPooling2D((2,2))(x)
-    
-    # Cloud-adaptive blocks
-    for filters in [128, 256]:
-        x = Conv2D(filters, (3,3), padding='same')(x)
-        x = BatchNormalization()(x)
+    x = inputs
+    for f in [64, 64]:
+        x = Conv2D(f, (3, 3), padding='same')(x)
         x = LeakyReLU(alpha=0.1)(x)
-        x = SpatialAttention()(x)  # Add attention to focus on relevant sky regions
-        x = MaxPooling2D((2,2))(x)
-    
-    # Weather-condition processing
-    x = Conv2D(512, (3,3), dilation_rate=2, activation='swish')(x)
-    x = GlobalAveragePooling2D()(x)
-    
-    # Output with uncertainty estimation
-    output = Dense(1, activation='linear')(x)
-    model = Model(inputs, output)
-    model.compile(optimizer=tf.keras.optimizers.Adam(3e-5), loss='huber_loss')
+        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    for f in [128, 128]:
+        x = Conv2D(f, (3, 3), padding='same')(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    for _ in range(3):
+        skip = x
+        x = Conv2D(128, (3, 3), padding='same')(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        x = Add()([x, skip])
+        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    for f in [256, 256]:
+        x = Conv2D(f, (3, 3), padding='same')(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+        x = Flatten()(x)
+    for _ in range(2):
+        x = Dense(1024)(x)
+        x = Dropout(0.3)(x)
+        x = LeakyReLU(alpha=0.1)(x)
+        output = Dense(1, activation='linear')(x)
+        model = Model(inputs, output)
+        model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='mae')
+        model.load_weights(MODEL_PATH)
+        
     return model
 
 model = load_pm25_model()
