@@ -2,7 +2,9 @@ streamlit
 numpy>=1.21
 Pillow>=9.0
 opencv-python-headless>=4.5.5.64
-torch>=2.0.0
-torchvision>=0.15.0
+tensorflow>=2.10
+torch>=2.0
+torchvision>=0.15
 modnet>=0.4.5
-tensorflow
+timm>=0.4.12
+scikit-image>=0.18
