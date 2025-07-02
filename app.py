@@ -228,7 +228,9 @@ def visualize_sky_detection(pil_img, save_path=None):
     if labels.max() <= 1: return False
     if max(np.bincount(labels.flatten())[1:]) < 0.02 * sky_mask.size: return False
     return True
-if is_cloudy_image(image):
+
+
+def is_cloudy_image(image):
     weather_data = fetch_weather_data(CITY)
     if weather_data:
         visibility = weather_data.get("current", {}).get("vis_km", 10)
@@ -246,7 +248,6 @@ if is_cloudy_image(image):
         # Minimum adjustment for cloudy conditions
         pm25_val = max(pm25_val, 30.0)  # Increased from 20
         pm25_std += 5.0  # Increased uncertainty for cloudy conditions
-
 
 
 # ------------------ Model Loader ------------------ #
