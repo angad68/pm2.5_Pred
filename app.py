@@ -44,7 +44,7 @@ import numpy as np
 import cv2
 from PIL import Image
 
-def is_sky_image(pil_img, base_thresh=0.35, min_sky_region=0.15):
+def is_sky_image(pil_img, base_thresh=0.38, min_sky_region=0.15):
     """
     Improved sky detection function with better robustness and edge case handling.
     
