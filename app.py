@@ -21,9 +21,14 @@ h1, h2, h3, h4 { color: #F1F1F1; }
 MODEL_PATH = "LIME_20240506.best.hdf5"
 MIN_PM25_VALUE = 20.0
 MAX_FILE_SIZE = 10 * 1024 * 1024
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "7088853eac6948e286555436250107")
 CITY = os.getenv("CITY", "Chandigarh")
 USE_UNCERTAINTY = True
+WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
+if not WEATHER_API_KEY:
+    # Fallback for local dev only (you can remove this block in prod)
+    WEATHER_API_KEY = "7088853eac6948e286555436250107"
+    st.warning("⚠️ Using default WeatherAPI key. Set 'WEATHER_API_KEY' in environment for security.")
+
 
 
 # ------------------ Image Quality Checks ------------------ #
