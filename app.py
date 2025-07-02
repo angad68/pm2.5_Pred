@@ -32,13 +32,29 @@ import cv2
 import numpy as np
 from PIL import Image
 
+def blur_score(pil_img, resize_to=(224, 224)):
+    """
+    Returns Laplacian variance score for image sharpness.
+    """
+    gray_img = pil_img.convert("L")
+    if resize_to:
+        gray_img = gray_img.resize(resize_to)
+    img_np = np.array(gray_img)
+    lap_var = cv2.Laplacian(img_np, cv2.CV_64F).var()
+    return lap_var
 
+def assess_blur(pil_img, is_sky_detected=False):
+    score = blur_score(pil_img)
+    # Looser threshold if sky-like image is detected
+    threshold = 2.0 if is_sky_detected else 100.0
 
+    if score < threshold:
+        st.warning(f"⚠️ Image appears low-detail (sharpness score: {score:.2f}). " +
+                   ("May be a plain sky." if is_sky_detected else "Consider re-uploading a clearer image."))
+    else:
+        st.success(f"✅ Image clarity looks good (sharpness score: {score:.2f})")
 
-def blur_score(pil_img):
-    img = pil_img.convert("L")
-    return cv2.Laplacian(np.array(img), cv2.CV_64F).var()
-
+    return score
 
 
 def is_overexposed_or_underexposed(pil_img, low=35, high=220):
