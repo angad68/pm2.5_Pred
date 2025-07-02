@@ -28,7 +28,7 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 
 
 # ------------------ Image Quality Checks ------------------ #
-def is_blurry(pil_img, threshold=10.0):
+def is_blurry(pil_img, threshold=5.0):
     return cv2.Laplacian(np.array(pil_img.convert("L")), cv2.CV_64F).var() < threshold
 
 def is_overexposed_or_underexposed(pil_img, low=35, high=220):
@@ -44,7 +44,7 @@ import numpy as np
 import cv2
 from PIL import Image
 
-def is_sky_image(pil_img, base_thresh=0.38, min_sky_region=0.15):
+def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.15):
     """
     Improved sky detection function with better robustness and edge case handling.
     
@@ -81,7 +81,7 @@ def is_sky_image(pil_img, base_thresh=0.38, min_sky_region=0.15):
     
     # 1. Blue sky (clear conditions)
     blue_sky = (
-        ((h_hsv >= 90) & (h_hsv <= 140)) &  # Blue hue range
+        ((h_hsv >= 60) & (h_hsv <= 130)) &  # Blue hue range
         (s > 30) & (s < 200) &              # Moderate saturation
         (v > 60) & (v < 240)                # Avoid pure white/black
     )
@@ -104,7 +104,7 @@ def is_sky_image(pil_img, base_thresh=0.38, min_sky_region=0.15):
     
     # 4. Sunset/sunrise sky (warmer tones)
     warm_sky = (
-        (((h_hsv >= 0) & (h_hsv <= 30)) | ((h_hsv >= 150) & (h_hsv <= 180))) &  # Orange/pink range
+        (((h_hsv >= 0) & (h_hsv <= 30)) | ((h_hsv >= 130) & (h_hsv <= 180))) &  # Orange/pink range
         (s > 20) & (s < 180) &
         (v > 80) & (v < 240)
     )
