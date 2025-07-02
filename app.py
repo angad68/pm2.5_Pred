@@ -6,6 +6,11 @@ from PIL import Image
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU, Dropout
 import os
+import torch
+from torchvision import transforms
+
+from modnet.src.model import MODNet  # This assumes you placed your app in the MODNet directory
+
 
 # ------------------ Theme ------------------ #
 st.markdown("""
