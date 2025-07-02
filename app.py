@@ -207,7 +207,6 @@ if is_cloudy_image(image):
             st.info(f"☁️ WeatherAPI: Cloudy in {CITY.title()} — adjusted value.")
             pm25_val = max(pm25_val, MIN_PM25_VALUE)
 
-
     # Display
     display_img = image.copy()
     display_img.thumbnail((500, 500))
@@ -221,3 +220,4 @@ if is_cloudy_image(image):
         st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
         category = categorize_pm25(pm25_val)
         st.markdown(f"**Air Quality:** {colors[category]} {category}")
+
