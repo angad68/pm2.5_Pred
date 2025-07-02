@@ -171,6 +171,7 @@ def is_valid_cloud_formation(pil_img):
 
 
 # ------------------ Model Loader ------------------ #
+# ------------------ Model Loader ------------------ #
 @st.cache_resource
 def load_pm25_model():
     inputs = Input(shape=(224, 224, 3))
@@ -178,31 +179,35 @@ def load_pm25_model():
     for f in [64, 64]:
         x = Conv2D(f, (3, 3), padding='same')(x)
         x = LeakyReLU(alpha=0.1)(x)
-        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+
     for f in [128, 128]:
         x = Conv2D(f, (3, 3), padding='same')(x)
         x = LeakyReLU(alpha=0.1)(x)
-        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+
     for _ in range(3):
         skip = x
         x = Conv2D(128, (3, 3), padding='same')(x)
         x = LeakyReLU(alpha=0.1)(x)
         x = Add()([x, skip])
         x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+
     for f in [256, 256]:
         x = Conv2D(f, (3, 3), padding='same')(x)
         x = LeakyReLU(alpha=0.1)(x)
-        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
-        x = Flatten()(x)
+    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+
+    x = Flatten()(x)
     for _ in range(2):
         x = Dense(1024)(x)
         x = Dropout(0.3)(x)
         x = LeakyReLU(alpha=0.1)(x)
-        output = Dense(1, activation='linear')(x)
-        model = Model(inputs, output)
-        model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='mae')
-        model.load_weights(MODEL_PATH)
-        
+
+    output = Dense(1, activation='linear')(x)
+    model = Model(inputs, output)
+    model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='mae')
+    model.load_weights(MODEL_PATH)
     return model
 
 model = load_pm25_model()
