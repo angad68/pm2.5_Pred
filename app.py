@@ -68,12 +68,16 @@ def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.20):
     h_hsv, s, v = cv2.split(hsv)
     l_lab, a_lab, b_lab = cv2.split(lab)
 
+    # Adjusted conditions for cloudy skies
     blue_sky = ((h_hsv >= 60) & (h_hsv <= 130)) & (s > 30) & (s < 200) & (v > 60) & (v < 240)
     light_sky = ((h_hsv >= 75) & (h_hsv <= 150)) & (s > 10) & (s < 80) & (v > 100) & (v < 250) & (b_lab < 140)
     gray_white_clouds = (s < 40) & (v > 130) & (v < 245) & (np.abs(a_lab - 128) < 15) & (np.abs(b_lab - 128) < 20)
     warm_sky = (((h_hsv >= 0) & (h_hsv <= 30)) | ((h_hsv >= 130) & (h_hsv <= 180))) & (s > 20) & (s < 180) & (v > 80) & (v < 240)
 
-    sky_mask = blue_sky | light_sky | gray_white_clouds | warm_sky
+    # New condition for cloudy skies
+    cloudy_sky = (s < 50) & (v > 100) & (v < 200)
+
+    sky_mask = blue_sky | light_sky | gray_white_clouds | warm_sky | cloudy_sky
     y_coords = np.arange(h).reshape(-1, 1)
     weight_mask = 2.0 * np.exp(-2.5 * y_coords / h) + 0.3
     weight_mask = cv2.GaussianBlur(weight_mask, (5, 5), 1.0)
@@ -99,6 +103,7 @@ def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.20):
         (upper_sky_ratio > min_sky_region) and
         (weighted_ratio > 0.1)
     )
+
 
 def visualize_sky_mask(pil_img):
     img = pil_img.resize((384, 384), Image.Resampling.LANCZOS).convert("RGB")
