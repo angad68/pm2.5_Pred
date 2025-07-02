@@ -228,15 +228,26 @@ def visualize_sky_detection(pil_img, save_path=None):
     if labels.max() <= 1: return False
     if max(np.bincount(labels.flatten())[1:]) < 0.02 * sky_mask.size: return False
     return True
+if is_cloudy_image(image):
+    weather_data = fetch_weather_data(CITY)
+    if weather_data:
+        visibility = weather_data.get("current", {}).get("vis_km", 10)
+        
+        # Adjust based on visibility
+        if visibility < 3:
+            pm25_val *= 1.4  # Poor visibility = higher pollution
+            st.info(f"☁️ Very poor visibility ({visibility}km) - significant pollution likely")
+        elif visibility < 6:
+            pm25_val *= 1.2
+            st.info(f"☁️ Poor visibility ({visibility}km) - moderate pollution adjustment")
+        else:
+            st.info(f"☁️ Cloudy conditions detected - minor adjustment applied")
+        
+        # Minimum adjustment for cloudy conditions
+        pm25_val = max(pm25_val, 30.0)  # Increased from 20
+        pm25_std += 5.0  # Increased uncertainty for cloudy conditions
 
-def is_cloudy_image(pil_img, cloudy_thresh=0.25):
-    img = pil_img.resize((256, 256)).convert("RGB")
-    hsv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2HSV)
-    h, s, v = cv2.split(hsv)
-    cloud_mask = (s < 40) & (v > 80) & (v < 200)
-    dark_cloud_mask = (s < 30) & (v >= 40) & (v <= 90)
-    cloudy_combined = cloud_mask | dark_cloud_mask
-    return np.mean(cloudy_combined) > cloudy_thresh
+
 
 # ------------------ Model Loader ------------------ #
 @st.cache_resource
