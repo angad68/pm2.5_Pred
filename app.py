@@ -161,6 +161,10 @@ def detect_cloud_types(pil_img):
         'cumulus': np.sum(cumulus),
         'stratus': np.sum(stratus)
     }
+
+
+
+
 def is_valid_cloud_formation(pil_img):
     cloud_data = detect_cloud_types(pil_img)
     total_pixels = 256 * 256
@@ -241,7 +245,7 @@ colors = {
 }
 
 # ------------------ App ------------------ #
-st.title("🌫️ PM2.5 Air Quality Estimator")
+st.title("🌫️Air Quality Estimator using PM2.5 value")
 input_mode = st.radio("Select input method:", ["📁 Upload Image", "📷 Use Webcam"])
 image = None
 
