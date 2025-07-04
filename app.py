@@ -6,6 +6,7 @@ from PIL import Image
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU, Dropout
 import os
+from ultralytics import YOLO
 
 
 
@@ -168,6 +169,16 @@ def is_valid_cloud_formation(pil_img):
         (cloud_data['stratus']/total_pixels < 0.5)     # Thick clouds limited
     )
 
+def contains_non_sky_objects(pil_img, allowed_classes=['sky', 'cloud']):
+    results = yolo_model(np.array(pil_img))
+    classes = results[0].names
+    detected = [classes[int(cls)] for cls in results[0].boxes.cls]
+
+    # Check for any object not in allowed list
+    for obj in detected:
+        if obj.lower() not in allowed_classes:
+            return True, detected
+    return False, detected
 
 
 
@@ -212,6 +223,15 @@ def load_pm25_model():
     return model
 
 model = load_pm25_model()
+
+
+
+@st.cache_resource
+def load_yolo_model():
+    return YOLO("yolov8n.pt")  # or yolov5s.pt if using YOLOv5
+
+yolo_model = load_yolo_model()
+
 
 # ------------------ Prediction ------------------ #
 def predict_pm25(image):
@@ -282,6 +302,11 @@ if image:
     if not is_sky:
         st.error("Image does not look like sky.")
         st.stop()
+        is_foreign, objects = contains_non_sky_objects(image)
+        if is_foreign:
+            st.error(f"❌ Image contains non-sky elements: {set(objects)}. Please upload a clear sky image.")
+            st.stop()
+
 
 
 
