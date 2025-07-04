@@ -175,7 +175,7 @@ def is_valid_cloud_formation(pil_img):
         (cloud_data['stratus']/total_pixels < 0.5)     # Thick clouds limited
     )
 
-def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky'), conf_thresh=0.4):
+def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky','smog','fog'), conf_thresh=0.4):
     img_np = np.array(pil_img)
     h = img_np.shape[0]
     upper_half = img_np[:h // 2, :, :]
