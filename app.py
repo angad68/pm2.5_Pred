@@ -90,6 +90,11 @@ def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.20):
     
     # Dynamic threshold adaptation
     cloud_ratio = np.sum(dense_clouds | scattered_clouds | stormy_clouds) / (h * w)
+    adaptive_thresh = base_thresh
+    if avg_brightness > 200: adaptive_thresh += 0.08
+    elif avg_brightness < 80: adaptive_thresh -= 0.08
+    if brightness_std < 30: adaptive_thresh -= 0.05
+
     if cloud_ratio > 0.3:  # If significant clouds detected
         final_threshold = max(adaptive_thresh - 0.1, 0.05)
 
