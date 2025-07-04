@@ -37,11 +37,17 @@ def blur_score(pil_img, resize_to=(224, 224)):
 def assess_blur(pil_img, is_sky_detected=False):
     score = blur_score(pil_img)
     threshold = 2.0 if is_sky_detected else 100.0
+
     if score < threshold:
-        st.warning(f"⚠️ Image appears low-detail (sharpness score: {score:.2f}). " +
-                   ("May be a plain sky." if is_sky_detected else "Consider re-uploading a clearer image."))
+        msg = f"⚠️ Image is too blurry (sharpness score: {score:.2f})."
+        if is_sky_detected:
+            st.error(msg + " Even plain skies should have more detail.")
+        else:
+            st.error(msg + " Please upload a clearer image.")
+        st.stop()
     else:
         st.success(f"✅ Image clarity looks good (sharpness score: {score:.2f})")
+
     return score
 
 def is_overexposed_or_underexposed(pil_img, low=35, high=220):
@@ -139,6 +145,8 @@ def visualize_sky_mask(pil_img):
     vis = img_np.copy()
     vis[sky_mask] = [0, 255, 0]
     return vis
+
+
 
 
 
