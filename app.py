@@ -177,10 +177,8 @@ def is_valid_cloud_formation(pil_img):
         (cloud_data['stratus']/total_pixels < 0.5)     # Thick clouds limited
     )
 
-def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky'), conf_thresh=0.35):
+def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky'), conf_thresh=0.4):
     img_np = np.array(pil_img)
-
-    # Mask bottom half — only keep upper half
     h = img_np.shape[0]
     upper_half = img_np[:h // 2, :, :]
 
@@ -197,6 +195,7 @@ def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky'), conf_thr
 
     foreign = [obj for obj in detected if obj.lower() not in allowed_classes]
     return len(foreign) > 0, detected
+
 
 
 
@@ -333,8 +332,10 @@ if image:
 
                                                    
     if is_foreign:
-        st.error(f"❌ Image contains non-sky elements: {set(objects)}. Please upload a clear sky image.")
-        st.stop()
+        st.warning(f"⚠️ Detected non-sky objects: {set(objects)}. Prediction will continue, but results may be less accurate.")
+    else:
+        st.success("✅ No distracting objects detected in the sky region.")
+
         
 
     if not is_sky:
