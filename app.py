@@ -303,7 +303,7 @@ if image:
     if is_mostly_white_or_black(image):
         st.error("Image is mostly white or black.")
         st.stop()
-    is_foreign, objects = contains_non_sky_objects(image
+    is_foreign, objects = contains_non_sky_objects(image)
 
                                                    
     if is_foreign:
