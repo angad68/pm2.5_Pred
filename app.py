@@ -327,10 +327,7 @@ if image:
         st.error("Image is mostly white or black.")
         st.stop()
 
-    if not is_sky:
-        st.warning("⚠️ Image may not be a clear sky.")
-    if not is_valid_cloud_formation(image):
-        st.warning("⚠️ Cloud formation may obscure accurate measurement")
+
 
     # Prediction
     pm25_val, pm25_std = predict_pm25(image)
@@ -345,6 +342,12 @@ if image:
         st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
         category = categorize_pm25(pm25_val)
         st.markdown(f"**Air Quality:** {colors[category]} {category}")
+
+    if image:
+        if not is_sky:
+            st.warning("⚠️ Image may not be a clear sky.")
+        if not is_valid_cloud_formation(image):
+            st.warning("⚠️ Cloud formation may obscure accurate measurement")
 
     # 👇 Now run object detector after prediction
     is_foreign, objects = contains_non_sky_objects(image)
