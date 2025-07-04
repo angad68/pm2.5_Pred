@@ -8,3 +8,4 @@ Pillow>=9.0
 modnet>=0.4.5
 timm>=0.4.12
 scikit-image>=0.18
+ultralytics
