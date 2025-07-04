@@ -171,8 +171,12 @@ def is_valid_cloud_formation(pil_img):
 
 def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky'), conf_thresh=0.4):
     img_np = np.array(pil_img)
-    results = yolo_model(img_np)[0]
 
+    # Mask bottom half — only keep upper half
+    h = img_np.shape[0]
+    upper_half = img_np[:h // 2, :, :]
+
+    results = yolo_model(upper_half)[0]
     names = results.names
     classes = results.boxes.cls if hasattr(results, "boxes") else []
     confidences = results.boxes.conf if hasattr(results, "boxes") else []
