@@ -41,14 +41,12 @@ def assess_blur(pil_img, is_sky_detected=False):
     if score < threshold:
         msg = f"⚠️ Image is too blurry (sharpness score: {score:.2f})."
         if is_sky_detected:
-            st.error(msg + " Even plain skies should have more detail.")
+            st.warning(msg + " Even plain skies should have more detail.")
         else:
-            st.error(msg + " Please upload a clearer image.")
-        st.stop()
-    else:
-        st.success(f"✅ Image clarity looks good (sharpness score: {score:.2f})")
-
+            st.warning(msg + " Please upload a clearer image.")
+    # Do not show success anymore
     return score
+
 
 def is_overexposed_or_underexposed(pil_img, low=35, high=220):
     mean_val = np.mean(np.array(pil_img.convert("L")))
@@ -328,38 +326,14 @@ if image:
     if is_mostly_white_or_black(image):
         st.error("Image is mostly white or black.")
         st.stop()
-    is_foreign, objects = contains_non_sky_objects(image)
-
-                                                   
-    if is_foreign:
-        st.warning(f"⚠️ Detected non-sky objects: {set(objects)}. Prediction will continue, but results may be less accurate.")
-    else:
-        st.success("✅ No distracting objects detected in the sky region.")
-
-        
 
     if not is_sky:
         st.warning("⚠️ Image may not be a clear sky.")
-
-
-
-
-
-if image:
-    if is_mostly_white_or_black(image):
-        st.error("Unable to process: Image lacks contrast")
-        
-    elif not is_valid_cloud_formation(image):
+    if not is_valid_cloud_formation(image):
         st.warning("⚠️ Cloud formation may obscure accurate measurement")
 
-
-
-
-
-    
-    
+    # Prediction
     pm25_val, pm25_std = predict_pm25(image)
-    
     display_img = image.copy()
     display_img.thumbnail((500, 500))
     col1, col2 = st.columns([1, 1.2])
@@ -371,14 +345,17 @@ if image:
         st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
         category = categorize_pm25(pm25_val)
         st.markdown(f"**Air Quality:** {colors[category]} {category}")
-        # In your prediction display:
+
+    # 👇 Now run object detector after prediction
+    is_foreign, objects = contains_non_sky_objects(image)
+    if is_foreign:
+        st.warning(f"⚠️ Detected non-sky objects: {set(objects)}. Prediction may be less accurate.")
+
     if st.checkbox("🌥️ Show Weather Analysis"):
         cloud_data = detect_cloud_types(image)
         st.write("### Cloud Composition:")
         st.write(f"- Cirrus (thin): {cloud_data['cirrus']/(256*256):.1%}")
         st.write(f"- Cumulus (fluffy): {cloud_data['cumulus']/(256*256):.1%}")
         st.write(f"- Stratus (thick): {cloud_data['stratus']/(256*256):.1%}")
-
         if cloud_data['stratus'] > cloud_data['cumulus']:
             st.warning("Heavy cloud cover detected. Results may be less accurate.")
-
