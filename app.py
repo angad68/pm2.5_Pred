@@ -70,61 +70,51 @@ def is_sky_image(pil_img, base_thresh=0.40, min_sky_region=0.20):
     h_hsv, s, v = cv2.split(hsv)
     l_lab, a_lab, b_lab = cv2.split(lab)
 
-    # Adjusted conditions for cloudy skies
     blue_sky = ((h_hsv >= 60) & (h_hsv <= 130)) & (s > 30) & (s < 200) & (v > 60) & (v < 240)
     light_sky = ((h_hsv >= 75) & (h_hsv <= 150)) & (s > 10) & (s < 80) & (v > 100) & (v < 250) & (b_lab < 140)
     gray_white_clouds = (s < 40) & (v > 130) & (v < 245) & (np.abs(a_lab - 128) < 15) & (np.abs(b_lab - 128) < 20)
     warm_sky = (((h_hsv >= 0) & (h_hsv <= 30)) | ((h_hsv >= 130) & (h_hsv <= 180))) & (s > 20) & (s < 180) & (v > 80) & (v < 240)
-
-    # New condition for cloudy skies
     cloudy_sky = (s < 50) & (v > 100) & (v < 200)
 
-    dense_clouds = (s < 30) & (v > 150) & (v < 220)  # Bright thick clouds
-    scattered_clouds = (s < 60) & (v > 120) & (v < 200)  # Lighter clouds
-    stormy_clouds = (s > 30) & (v < 100)  # Dark storm clouds
-    
-    sky_mask = (
-        blue_sky | light_sky | gray_white_clouds | warm_sky | 
-        dense_clouds | scattered_clouds | stormy_clouds
-    )
-    
-    # Dynamic threshold adaptation
-    cloud_ratio = np.sum(dense_clouds | scattered_clouds | stormy_clouds) / (h * w)
-    adaptive_thresh = base_thresh
-    if avg_brightness > 200: adaptive_thresh += 0.08
-    elif avg_brightness < 80: adaptive_thresh -= 0.08
-    if brightness_std < 30: adaptive_thresh -= 0.05
+    dense_clouds = (s < 30) & (v > 150) & (v < 220)
+    scattered_clouds = (s < 60) & (v > 120) & (v < 200)
+    stormy_clouds = (s > 30) & (v < 100)
 
-    if cloud_ratio > 0.3:  # If significant clouds detected
-        final_threshold = max(adaptive_thresh - 0.1, 0.05)
-
-
-
-
-    
     sky_mask = blue_sky | light_sky | gray_white_clouds | warm_sky | cloudy_sky
+
     y_coords = np.arange(h).reshape(-1, 1)
     weight_mask = 2.0 * np.exp(-2.5 * y_coords / h) + 0.3
     weight_mask = cv2.GaussianBlur(weight_mask, (5, 5), 1.0)
     weighted_sky_pixels = np.sum(sky_mask * weight_mask)
     total_weight = np.sum(weight_mask)
     weighted_ratio = weighted_sky_pixels / total_weight
-    upper_third = sky_mask[:h//3, :]
-    upper_sky_ratio = np.sum(upper_third) / (h//3 * w)
+
+    upper_third = sky_mask[:h // 3, :]
+    upper_sky_ratio = np.sum(upper_third) / (h // 3 * w)
     avg_brightness = np.mean(v)
     brightness_std = np.std(v)
+
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
     texture_penalty = min(laplacian_var / 1000.0, 0.2)
 
+    # ✅ Initialize adaptive_thresh BEFORE use
     adaptive_thresh = base_thresh
-    if avg_brightness > 200: adaptive_thresh += 0.08
-    elif avg_brightness < 80: adaptive_thresh -= 0.08
-    if brightness_std < 30: adaptive_thresh -= 0.05
-    final_threshold = max(adaptive_thresh - texture_penalty, 0.1)
+    if avg_brightness > 200:
+        adaptive_thresh += 0.08
+    elif avg_brightness < 80:
+        adaptive_thresh -= 0.08
+    if brightness_std < 30:
+        adaptive_thresh -= 0.05
+
+    cloud_ratio = np.sum(dense_clouds | scattered_clouds | stormy_clouds) / (h * w)
+    if cloud_ratio > 0.3:
+        final_threshold = max(adaptive_thresh - 0.1, 0.05)
+    else:
+        final_threshold = max(adaptive_thresh - texture_penalty, 0.1)
 
     return (
-        (weighted_ratio > final_threshold) and 
+        (weighted_ratio > final_threshold) and
         (upper_sky_ratio > min_sky_region) and
         (weighted_ratio > 0.1)
     )
