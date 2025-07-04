@@ -169,10 +169,14 @@ def is_valid_cloud_formation(pil_img):
         (cloud_data['stratus']/total_pixels < 0.5)     # Thick clouds limited
     )
 
-def contains_non_sky_objects(pil_img, allowed_classes=['sky', 'cloud']):
-    results = yolo_model(np.array(pil_img))
-    classes = results[0].names
-    detected = [classes[int(cls)] for cls in results[0].boxes.cls]
+def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky')):
+    img_np = np.array(pil_img)
+    results = yolo_model(img_np)
+    names = results[0].names
+    detected_classes = [names[int(cls)] for cls in results[0].boxes.cls]
+
+    foreign = [cls for cls in detected_classes if cls.lower() not in allowed_classes]
+    return len(foreign) > 0, detected_classes
 
     # Check for any object not in allowed list
     for obj in detected:
@@ -299,13 +303,16 @@ if image:
     if is_mostly_white_or_black(image):
         st.error("Image is mostly white or black.")
         st.stop()
-    if not is_sky:
-        st.error("Image does not look like sky.")
+    is_foreign, objects = contains_non_sky_objects(image
+
+                                                   
+    if is_foreign:
+        st.error(f"❌ Image contains non-sky elements: {set(objects)}. Please upload a clear sky image.")
         st.stop()
-        is_foreign, objects = contains_non_sky_objects(image)
-        if is_foreign:
-            st.error(f"❌ Image contains non-sky elements: {set(objects)}. Please upload a clear sky image.")
-            st.stop()
+
+    if not is_sky:
+        st.warning("⚠️ Image may not be a clear sky.")
+
 
 
 
