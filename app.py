@@ -313,11 +313,11 @@ if image:
         st.markdown(f"**Air Quality:** {colors[category]} {category}")
         # In your prediction display:
     if st.checkbox("🌥️ Show Weather Analysis"):
-    cloud_data = detect_cloud_types(image)
-    st.write("### Cloud Composition:")
-    st.write(f"- Cirrus (thin): {cloud_data['cirrus']/(256*256):.1%}")
-    st.write(f"- Cumulus (fluffy): {cloud_data['cumulus']/(256*256):.1%}")
-    st.write(f"- Stratus (thick): {cloud_data['stratus']/(256*256):.1%}")
+        cloud_data = detect_cloud_types(image)
+        st.write("### Cloud Composition:")
+        st.write(f"- Cirrus (thin): {cloud_data['cirrus']/(256*256):.1%}")
+        st.write(f"- Cumulus (fluffy): {cloud_data['cumulus']/(256*256):.1%}")
+        st.write(f"- Stratus (thick): {cloud_data['stratus']/(256*256):.1%}")
 
         if cloud_data['stratus'] > cloud_data['cumulus']:
             st.warning("Heavy cloud cover detected. Results may be less accurate.")
