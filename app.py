@@ -174,6 +174,7 @@ def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky')):
     results = yolo_model(img_np)
     names = results[0].names
     detected_classes = [names[int(cls)] for cls in results[0].boxes.cls]
+    if results[0].boxes.conf[i] < 0.3: continue
 
     foreign = [cls for cls in detected_classes if cls.lower() not in allowed_classes]
     return len(foreign) > 0, detected_classes
