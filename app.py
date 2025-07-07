@@ -6,6 +6,7 @@ from PIL import Image
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU, Dropout
 import os
+from ultralytics import YOLO
 
 
 
@@ -36,12 +37,16 @@ def blur_score(pil_img, resize_to=(224, 224)):
 def assess_blur(pil_img, is_sky_detected=False):
     score = blur_score(pil_img)
     threshold = 2.0 if is_sky_detected else 100.0
+
     if score < threshold:
-        st.warning(f"⚠️ Image appears low-detail (sharpness score: {score:.2f}). " +
-                   ("May be a plain sky." if is_sky_detected else "Consider re-uploading a clearer image."))
-    else:
-        st.success(f"✅ Image clarity looks good (sharpness score: {score:.2f})")
+        msg = f"⚠️ Image is too blurry (sharpness score: {score:.2f})."
+        if is_sky_detected:
+            st.warning(msg + " Even plain skies should have more detail.")
+        else:
+            st.warning(msg + " Please upload a clearer image.")
+    # Do not show success anymore
     return score
+
 
 def is_overexposed_or_underexposed(pil_img, low=35, high=220):
     mean_val = np.mean(np.array(pil_img.convert("L")))
@@ -141,6 +146,8 @@ def visualize_sky_mask(pil_img):
 
 
 
+
+
 def detect_cloud_types(pil_img):
     """Classify cloud types that affect PM2.5 visibility"""
     img_np = np.array(pil_img.resize((256, 256)))
@@ -168,6 +175,37 @@ def is_valid_cloud_formation(pil_img):
         (cloud_data['stratus']/total_pixels < 0.5)     # Thick clouds limited
     )
 
+def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky'), conf_thresh=0.4):
+    img_np = np.array(pil_img)
+    h = img_np.shape[0]
+    upper_half = img_np[:h // 2, :, :]
+
+    results = yolo_model(upper_half)[0]
+    names = results.names
+    classes = results.boxes.cls if hasattr(results, "boxes") else []
+    confidences = results.boxes.conf if hasattr(results, "boxes") else []
+
+    detected = []
+    for cls_id, conf in zip(classes, confidences):
+        if conf >= conf_thresh:
+            obj_name = names[int(cls_id)]
+            detected.append(obj_name)
+
+    foreign = [obj for obj in detected if obj.lower() not in allowed_classes]
+    return len(foreign) > 0, detected
+
+
+
+
+
+    foreign = [cls for cls in detected_classes if cls.lower() not in allowed_classes]
+    return len(foreign) > 0, detected_classes
+
+    # Check for any object not in allowed list
+    for obj in detected:
+        if obj.lower() not in allowed_classes:
+            return True, detected
+    return False, detected
 
 
 
@@ -212,6 +250,15 @@ def load_pm25_model():
     return model
 
 model = load_pm25_model()
+
+
+
+@st.cache_resource
+def load_yolo_model():
+    return YOLO("yolov8n.pt")  # or yolov5s.pt if using YOLOv5
+
+yolo_model = load_yolo_model()
+
 
 # ------------------ Prediction ------------------ #
 def predict_pm25(image):
@@ -279,27 +326,11 @@ if image:
     if is_mostly_white_or_black(image):
         st.error("Image is mostly white or black.")
         st.stop()
-    if not is_sky:
-        st.error("Image does not look like sky.")
-        st.stop()
 
 
 
-if image:
-    if is_mostly_white_or_black(image):
-        st.error("Unable to process: Image lacks contrast")
-        
-    elif not is_valid_cloud_formation(image):
-        st.warning("⚠️ Cloud formation may obscure accurate measurement")
-
-
-
-
-
-    
-    
+    # Prediction
     pm25_val, pm25_std = predict_pm25(image)
-    
     display_img = image.copy()
     display_img.thumbnail((500, 500))
     col1, col2 = st.columns([1, 1.2])
@@ -311,14 +342,23 @@ if image:
         st.metric("Uncertainty (±)", f"{pm25_std:.1f}")
         category = categorize_pm25(pm25_val)
         st.markdown(f"**Air Quality:** {colors[category]} {category}")
-        # In your prediction display:
+
+    if image:
+        if not is_sky:
+            st.warning("⚠️ Image may not be a clear sky.")
+        if not is_valid_cloud_formation(image):
+            st.warning("⚠️ Cloud formation may obscure accurate measurement")
+
+    # 👇 Now run object detector after prediction
+    is_foreign, objects = contains_non_sky_objects(image)
+    if is_foreign:
+        st.warning(f"⚠️ Detected non-sky objects: {set(objects)}. Prediction may be less accurate.")
+
     if st.checkbox("🌥️ Show Weather Analysis"):
         cloud_data = detect_cloud_types(image)
         st.write("### Cloud Composition:")
         st.write(f"- Cirrus (thin): {cloud_data['cirrus']/(256*256):.1%}")
         st.write(f"- Cumulus (fluffy): {cloud_data['cumulus']/(256*256):.1%}")
         st.write(f"- Stratus (thick): {cloud_data['stratus']/(256*256):.1%}")
-
         if cloud_data['stratus'] > cloud_data['cumulus']:
             st.warning("Heavy cloud cover detected. Results may be less accurate.")
-
