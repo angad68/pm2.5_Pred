@@ -20,7 +20,7 @@ h1, h2, h3, h4 { color: #F1F1F1; }
 """, unsafe_allow_html=True)
 
 # ------------------ Constants ------------------ #
-MODEL_PATH = "LIME_20240506.best.hdf5"
+MODEL_PATH = "VGG19Hybrid_weights_20250707.weights.h5"
 MIN_PM25_VALUE = 20.0
 MAX_FILE_SIZE = 10 * 1024 * 1024
 USE_UNCERTAINTY = True
@@ -213,40 +213,46 @@ def contains_non_sky_objects(pil_img, allowed_classes=('cloud', 'sky'), conf_thr
 # ------------------ Model Loader ------------------ #
 @st.cache_resource
 def load_pm25_model():
-    inputs = Input(shape=(224, 224, 3))
-    x = inputs
-    for f in [64, 64]:
-        x = Conv2D(f, (3, 3), padding='same')(x)
-        x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    from tensorflow.keras.models import Model
+    from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Add, LeakyReLU
 
-    for f in [128, 128]:
-        x = Conv2D(f, (3, 3), padding='same')(x)
-        x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+    def conv_block(x, filters, convs, block_name):
+        shortcut = x
+        for i in range(1, convs + 1):
+            x = Conv2D(filters, (3, 3), padding='same', name=f'{block_name}_conv{i}')(x)
+            x = LeakyReLU(negative_slope=0.1)(x)
 
-    for _ in range(3):
-        skip = x
-        x = Conv2D(128, (3, 3), padding='same')(x)
-        x = LeakyReLU(alpha=0.1)(x)
-        x = Add()([x, skip])
-        x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+        if shortcut.shape[-1] != filters:
+            shortcut = Conv2D(filters, (1, 1), padding='same', name=f'{block_name}_shortcut')(shortcut)
 
-    for f in [256, 256]:
-        x = Conv2D(f, (3, 3), padding='same')(x)
-        x = LeakyReLU(alpha=0.1)(x)
-    x = MaxPooling2D((3, 3), strides=(2, 2))(x)
+        x = Add(name=f'{block_name}_add')([x, shortcut])
+        x = MaxPooling2D((2, 2), strides=(2, 2), name=f'{block_name}_pool')(x)
+        return x
 
-    x = Flatten()(x)
-    for _ in range(2):
-        x = Dense(1024)(x)
-        x = Dropout(0.3)(x)
-        x = LeakyReLU(alpha=0.1)(x)
+    inputs = Input(shape=(224, 224, 3), name="input_image")
+    x = conv_block(inputs, 64, 2, 'block1')
+    x = conv_block(x, 128, 2, 'block2')
+    x = conv_block(x, 256, 4, 'block3')
+    x = conv_block(x, 512, 4, 'block4')
+    x = conv_block(x, 512, 4, 'block5')
 
-    output = Dense(1, activation='linear')(x)
-    model = Model(inputs, output)
+    x = Flatten(name='flatten')(x)
+    x = Dense(1024, name='fc1')(x)
+    x = LeakyReLU(negative_slope=0.1)(x)
+    x = Dense(1024, name='fc2')(x)
+    x = LeakyReLU(negative_slope=0.1)(x)
+
+    aqi_output = Dense(1, activation='linear', name='AQI_output')(x)
+    pm25_output = Dense(1, activation='linear', name='PM2.5_output')(x)
+    pm10_output = Dense(1, activation='linear', name='PM10_output')(x)
+
+    model = Model(inputs=inputs, outputs=[aqi_output, pm25_output, pm10_output], name="VGG19HybridResidual")
+
     model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='mae')
-    model.load_weights(MODEL_PATH)
+
+    # ✅ Load your weights
+    model.load_weights("VGG19Hybrid_weights_20250707.weights.h5")
+
     return model
 
 model = load_pm25_model()
@@ -265,11 +271,12 @@ def predict_pm25(image):
     resized = image.resize((224, 224))
     img_array = np.array(resized) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
+
     if USE_UNCERTAINTY:
-        preds = [model(img_array, training=True).numpy().squeeze() for _ in range(30)]
+        preds = [model(img_array, training=True)[1].numpy().squeeze() for _ in range(30)]
         return float(np.mean(preds)), float(np.std(preds))
     else:
-        val = float(model(img_array, training=False).numpy().squeeze())
+        val = float(model(img_array, training=False)[1].numpy().squeeze())  # Index 1 = PM2.5
         return val, 0.0
 
 # ------------------ Categorization ------------------ #
